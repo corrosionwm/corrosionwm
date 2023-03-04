@@ -6,7 +6,7 @@ use smithay::{
         Seat,
     },
     reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
+        wayland_protocols::xdg::shell::server::xdg_toplevel::{self},
         wayland_server::{
             protocol::{wl_seat, wl_surface::WlSurface},
             Resource,
@@ -26,16 +26,24 @@ use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_to
 
 use crate::{
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    state::Backend,
     Corrosion,
 };
 
-impl XdgShellHandler for Corrosion {
+impl<BackendData: Backend> XdgShellHandler for Corrosion<BackendData> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let window = Window::new(surface);
+        window.toplevel().with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::TiledLeft);
+            state.states.set(xdg_toplevel::State::TiledBottom);
+            state.states.set(xdg_toplevel::State::TiledRight);
+            state.states.set(xdg_toplevel::State::TiledTop);
+        });
+        window.toplevel().send_configure();
         self.space.map_element(window, (0, 0), false);
     }
 
@@ -114,7 +122,7 @@ impl XdgShellHandler for Corrosion {
 }
 
 // xdg decoration
-impl XdgDecorationHandler for Corrosion {
+impl<BackendData: Backend> XdgDecorationHandler for Corrosion<BackendData> {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         toplevel.with_pending_state(|state| {
             // Advertise server side decoration
@@ -129,15 +137,15 @@ impl XdgDecorationHandler for Corrosion {
 }
 
 // Xdg Shell
-delegate_xdg_shell!(Corrosion);
+delegate_xdg_shell!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
 // Xdg Decoration
-delegate_xdg_decoration!(Corrosion);
+delegate_xdg_decoration!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
 
-fn check_grab(
-    seat: &Seat<Corrosion>,
+fn check_grab<BackendData: Backend + 'static>(
+    seat: &Seat<Corrosion<BackendData>>,
     surface: &WlSurface,
     serial: Serial,
-) -> Option<PointerGrabStartData<Corrosion>> {
+) -> Option<PointerGrabStartData<Corrosion<BackendData>>> {
     let pointer = seat.get_pointer()?;
 
     // Check that this surface has a click grab.

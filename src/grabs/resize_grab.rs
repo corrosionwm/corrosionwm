@@ -1,4 +1,4 @@
-use crate::Corrosion;
+use crate::{state::Backend, Corrosion};
 use smithay::{
     desktop::{Space, Window},
     input::pointer::{
@@ -36,8 +36,8 @@ impl From<xdg_toplevel::ResizeEdge> for ResizeEdge {
     }
 }
 
-pub struct ResizeSurfaceGrab {
-    start_data: PointerGrabStartData<Corrosion>,
+pub struct ResizeSurfaceGrab<BackendData: Backend + 'static> {
+    start_data: PointerGrabStartData<Corrosion<BackendData>>,
     window: Window,
 
     edges: ResizeEdge,
@@ -46,9 +46,9 @@ pub struct ResizeSurfaceGrab {
     last_window_size: Size<i32, Logical>,
 }
 
-impl ResizeSurfaceGrab {
+impl<BackendData: Backend + 'static> ResizeSurfaceGrab<BackendData> {
     pub fn start(
-        start_data: PointerGrabStartData<Corrosion>,
+        start_data: PointerGrabStartData<Corrosion<BackendData>>,
         window: Window,
         edges: ResizeEdge,
         initial_window_rect: Rectangle<i32, Logical>,
@@ -72,11 +72,11 @@ impl ResizeSurfaceGrab {
     }
 }
 
-impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
+impl<BackendData: Backend> PointerGrab<Corrosion<BackendData>> for ResizeSurfaceGrab<BackendData> {
     fn motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         _focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -132,8 +132,8 @@ impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
 
     fn relative_motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -142,8 +142,8 @@ impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -178,14 +178,14 @@ impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Corrosion> {
+    fn start_data(&self) -> &PointerGrabStartData<Corrosion<BackendData>> {
         &self.start_data
     }
 }

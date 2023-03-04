@@ -14,10 +14,10 @@ use smithay::{
 use crate::{
     grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::keybindings::{self, KeyAction},
-    state::Corrosion,
+    state::{Backend, Corrosion},
 };
 
-impl Corrosion {
+impl<BackendData: Backend> Corrosion<BackendData> {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
             InputEvent::Keyboard { event, .. } => {
@@ -114,7 +114,7 @@ impl Corrosion {
                         });
 
                         // Check for compositor initiated move grab
-                        if self.seat.get_keyboard().unwrap().modifier_state().alt {
+                        if self.seat.get_keyboard().unwrap().modifier_state().logo {
                             let start_data = GrabStartData {
                                 focus: None,
                                 button,
