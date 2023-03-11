@@ -26,7 +26,7 @@ use smithay::{
 use crate::CalloopData;
 
 // define the state of the compositor
-pub struct Corrosion {
+pub struct Neko {
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
 
@@ -39,14 +39,14 @@ pub struct Corrosion {
     pub xdg_decoration_state: XdgDecorationState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
-    pub seat_state: SeatState<Corrosion>,
+    pub seat_state: SeatState<Neko>,
     pub data_device_state: DataDeviceState,
 
     pub seat: Seat<Self>,
 }
 
 // impl the state of the compositor
-impl Corrosion {
+impl Neko {
     pub fn new(event_loop: &mut EventLoop<CalloopData>, display: &mut Display<Self>) -> Self {
         // This code does the following:
         // 1. Creates a display handle
@@ -64,7 +64,7 @@ impl Corrosion {
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
-        let xdg_decoration_state = XdgDecorationState::new::<Corrosion>(&display.handle());
+        let xdg_decoration_state = XdgDecorationState::new::<Neko>(&display.handle());
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -114,7 +114,7 @@ impl Corrosion {
 
     // This function is used to initialize the wayland listener
     fn init_wayland_listener(
-        display: &mut Display<Corrosion>,
+        display: &mut Display<Neko>,
         event_loop: &mut EventLoop<CalloopData>,
     ) -> OsString {
         // Creates a new listening socket, automatically choosing the next available `wayland` socket name.

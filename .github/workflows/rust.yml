@@ -48,5 +48,5 @@ jobs:
         # Artifact name
         name: build-artifact-rust-${{ matrix.rust }}
         # A file, directory or wildcard pattern that describes what to upload
-        path: ./target/release/corrosionwm
+        path: ./target/release/Nekowm
         # The desired behavior if no files are found using the provided path.

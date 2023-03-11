@@ -10,11 +10,11 @@ mod winit;
 
 // imports
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
-pub use state::Corrosion;
+pub use state::Neko;
 
 pub struct CalloopData {
-    state: Corrosion,
-    display: Display<Corrosion>,
+    state: Neko,
+    display: Display<Neko>,
 }
 
 // HACK: this is temporary just to find a term
@@ -31,7 +31,7 @@ fn find_term() -> &'static str {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_env("CORROSIONWM_LOG") {
+    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_env("NekoWM_LOG") {
         // change this by changing the RUST_LOG environment variable
         tracing::info!("logging initialized with env filter: {}", env_filter);
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
@@ -40,12 +40,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tracing::info!("logging initialized with default filter");
     }
     tracing::info!("logging initialized");
-    tracing::info!("Starting corrosionWM");
+    tracing::info!("Starting NekoWM");
 
     let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
 
-    let mut display: Display<Corrosion> = Display::new()?;
-    let state = Corrosion::new(&mut event_loop, &mut display);
+    let mut display: Display<Neko> = Display::new()?;
+    let state = Neko::new(&mut event_loop, &mut display);
 
     let mut data = CalloopData { state, display };
 
@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match (flag.as_deref(), arg) {
         (Some("-h") | Some("--help"), _) => {
-            println!("Usage: corrosionwm [OPTION]...");
+            println!("Usage: NekoWM [OPTION]...");
             println!("A Wayland compositor written in Rust");
             println!("--command <command> or -c <command> to run a command on startup");
         }
@@ -75,9 +75,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("Starting corrosionWM event loop");
+    tracing::info!("Starting NekoWM event loop");
     event_loop.run(None, &mut data, move |_| {
-        // corrosionWM is running
+        // NekoWM is running
     })?;
 
     Ok(())

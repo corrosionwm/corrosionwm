@@ -1,4 +1,4 @@
-use crate::Corrosion;
+use crate::Neko;
 use smithay::{
     desktop::Window,
     input::pointer::{
@@ -10,16 +10,16 @@ use smithay::{
 };
 
 pub struct MoveSurfaceGrab {
-    pub start_data: PointerGrabStartData<Corrosion>,
+    pub start_data: PointerGrabStartData<Neko>,
     pub window: Window,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl PointerGrab<Corrosion> for MoveSurfaceGrab {
+impl PointerGrab<Neko> for MoveSurfaceGrab {
     fn motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         _focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -34,8 +34,8 @@ impl PointerGrab<Corrosion> for MoveSurfaceGrab {
 
     fn relative_motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -44,8 +44,8 @@ impl PointerGrab<Corrosion> for MoveSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -65,14 +65,14 @@ impl PointerGrab<Corrosion> for MoveSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Corrosion> {
+    fn start_data(&self) -> &PointerGrabStartData<Neko> {
         &self.start_data
     }
 }

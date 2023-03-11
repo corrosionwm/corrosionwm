@@ -1,2 +1,2 @@
-# corrosionwm
-Blazing fast wayland compositor written in rust
+# NekoWC
+New Efficient Kitten-oriented Wayland Compositor

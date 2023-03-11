@@ -16,7 +16,7 @@ use smithay::{
     utils::{Rectangle, Transform},
 };
 
-use crate::{CalloopData, Corrosion};
+use crate::{CalloopData, Neko};
 
 pub fn init_winit(
     event_loop: &mut EventLoop<CalloopData>,
@@ -36,17 +36,17 @@ pub fn init_winit(
     };
 
     let output = Output::new(
-        "corrosionWM".to_string(),
+        "NekoWM".to_string(),
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "corrosionWM".to_string(),
+            make: "NekoWM".to_string(),
             model: "Winit".to_string(),
         },
     );
 
     // This code sets the output mode, the orientation, the position, and the preferred mode.
-    let _global = output.create_global::<Corrosion>(&display.handle());
+    let _global = output.create_global::<Neko>(&display.handle());
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
@@ -119,8 +119,8 @@ pub fn winit_dispatch(
         _ => (),
     });
 
-    // windowbuilder to set the windows title to "corrosionWM"
-    backend.window().set_title("corrosionWM");
+    // windowbuilder to set the windows title to "NekoWM"
+    backend.window().set_title("NekoWM");
 
     // If the window is closed, stop the loop
     if let Err(WinitError::WindowClosed) = res {

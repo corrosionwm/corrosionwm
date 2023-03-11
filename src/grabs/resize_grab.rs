@@ -1,4 +1,4 @@
-use crate::Corrosion;
+use crate::Neko;
 use smithay::{
     desktop::{Space, Window},
     input::pointer::{
@@ -37,7 +37,7 @@ impl From<xdg_toplevel::ResizeEdge> for ResizeEdge {
 }
 
 pub struct ResizeSurfaceGrab {
-    start_data: PointerGrabStartData<Corrosion>,
+    start_data: PointerGrabStartData<Neko>,
     window: Window,
 
     edges: ResizeEdge,
@@ -48,7 +48,7 @@ pub struct ResizeSurfaceGrab {
 
 impl ResizeSurfaceGrab {
     pub fn start(
-        start_data: PointerGrabStartData<Corrosion>,
+        start_data: PointerGrabStartData<Neko>,
         window: Window,
         edges: ResizeEdge,
         initial_window_rect: Rectangle<i32, Logical>,
@@ -72,11 +72,11 @@ impl ResizeSurfaceGrab {
     }
 }
 
-impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
+impl PointerGrab<Neko> for ResizeSurfaceGrab {
     fn motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         _focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -132,8 +132,8 @@ impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
 
     fn relative_motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -142,8 +142,8 @@ impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -178,14 +178,14 @@ impl PointerGrab<Corrosion> for ResizeSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Neko,
+        handle: &mut PointerInnerHandle<'_, Neko>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Corrosion> {
+    fn start_data(&self) -> &PointerGrabStartData<Neko> {
         &self.start_data
     }
 }

@@ -14,10 +14,10 @@ use smithay::{
 use crate::{
     grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::keybindings::{self, KeyAction},
-    state::Corrosion,
+    state::Neko,
 };
 
-impl Corrosion {
+impl Neko {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
             InputEvent::Keyboard { event, .. } => {

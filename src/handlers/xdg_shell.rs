@@ -26,10 +26,10 @@ use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_to
 
 use crate::{
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
-    Corrosion,
+    Neko,
 };
 
-impl XdgShellHandler for Corrosion {
+impl XdgShellHandler for Neko {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -117,7 +117,7 @@ impl XdgShellHandler for Corrosion {
 }
 
 // xdg decoration
-impl XdgDecorationHandler for Corrosion {
+impl XdgDecorationHandler for Neko {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         toplevel.with_pending_state(|state| {
             // Advertise server side decoration
@@ -132,15 +132,15 @@ impl XdgDecorationHandler for Corrosion {
 }
 
 // Xdg Shell
-delegate_xdg_shell!(Corrosion);
+delegate_xdg_shell!(Neko);
 // Xdg Decoration
-delegate_xdg_decoration!(Corrosion);
+delegate_xdg_decoration!(Neko);
 
 fn check_grab(
-    seat: &Seat<Corrosion>,
+    seat: &Seat<Neko>,
     surface: &WlSurface,
     serial: Serial,
-) -> Option<PointerGrabStartData<Corrosion>> {
+) -> Option<PointerGrabStartData<Neko>> {
     let pointer = seat.get_pointer()?;
 
     // Check that this surface has a click grab.

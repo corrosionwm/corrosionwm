@@ -7,7 +7,7 @@ pub mod keybindings;
 mod xdg_shell;
 
 // imports
-use crate::Corrosion;
+use crate::Neko;
 
 // Wl Seat
 
@@ -18,11 +18,11 @@ use smithay::wayland::data_device::{
 };
 use smithay::{delegate_data_device, delegate_output, delegate_seat};
 
-impl SeatHandler for Corrosion {
+impl SeatHandler for Neko {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
 
-    fn seat_state(&mut self) -> &mut SeatState<Corrosion> {
+    fn seat_state(&mut self) -> &mut SeatState<Neko> {
         &mut self.seat_state
     }
 
@@ -35,25 +35,25 @@ impl SeatHandler for Corrosion {
     fn focus_changed(&mut self, _seat: &smithay::input::Seat<Self>, _focused: Option<&WlSurface>) {}
 }
 
-delegate_seat!(Corrosion);
+delegate_seat!(Neko);
 
 //
 // Wl Data Device
 //
 
-impl DataDeviceHandler for Corrosion {
+impl DataDeviceHandler for Neko {
     fn data_device_state(&self) -> &smithay::wayland::data_device::DataDeviceState {
         &self.data_device_state
     }
 }
 
-impl ClientDndGrabHandler for Corrosion {}
-impl ServerDndGrabHandler for Corrosion {}
+impl ClientDndGrabHandler for Neko {}
+impl ServerDndGrabHandler for Neko {}
 
-delegate_data_device!(Corrosion);
+delegate_data_device!(Neko);
 
 //
 // Wl Output & Xdg Output
 //
 
-delegate_output!(Corrosion);
+delegate_output!(Neko);
