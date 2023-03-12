@@ -66,10 +66,14 @@ impl CorrosionConfig {
             fs::write(&config_file, DEFAULT_CONFIG).unwrap();
         }
 
-        return match toml::from_str(&read_to_string(config_file).unwrap()) {
-            Ok(c) => c,
+        return match toml::from_str(&read_to_string(&config_file).unwrap()) {
+            Ok(c) => {
+                tracing::info!("Loaded config from {}", config_file);
+                c
+            }
             Err(_) => {
                 tracing::error!("Config file is not valid, falling back to default hardcoded config.");
+                tracing::info!("Loaded hardcoded config file");
                 toml::from_str(DEFAULT_CONFIG).unwrap()
             }
         }
