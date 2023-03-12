@@ -13,7 +13,7 @@ use std::process::Command;
 //The default configuration
 const DEFAULT_CONFIG: &str = r#"# This is the default corrosionwm config
 [defaults]
-terminal = "auto"
+terminal = "kitty"
 "#;
 
 //top level data struct
