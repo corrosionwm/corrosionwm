@@ -37,7 +37,7 @@ jobs:
           override: true
           components: rustfmt, clippy
     - name: Install Dependences
-      run: sudo apt install libudev-dev libdbus-1-dev pkg-config libsystemd-dev libwayland-dev libseat-dev xcb libinput-dev libxkbcommon-dev libglvnd-dev
+      run: sudo apt update && sudo apt install libudev-dev libdbus-1-dev pkg-config libsystemd-dev libwayland-dev libseat-dev xcb libinput-dev libxkbcommon-dev libglvnd-dev
     - name: Build
       run: cargo build --verbose --release
     - name: Lint
