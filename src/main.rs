@@ -7,27 +7,26 @@ mod grabs;
 mod input;
 mod state;
 mod winit;
+mod config;
 
 // imports
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 pub use state::Corrosion;
+pub use crate::config::{CorrosionConfig, Defaults};
+use std::process::Command;
+use which;
 
 pub struct CalloopData {
     state: Corrosion,
     display: Display<Corrosion>,
 }
 
-// HACK: this is temporary just to find a term
-fn find_term() -> &'static str {
-    let terms = ["kitty", "wezterm", "urxvt", "weston-terminal"];
-    for term in terms.iter() {
-        if which::which(term).is_ok() {
-            tracing::info!("Found terminal!: {}", term);
-            return term;
-        }
+fn find_term(defaults: &Defaults) -> Option<&String> {
+    let terminal = &defaults.terminal;
+    if which::which(terminal).is_ok() {
+        return Some(terminal);
     }
-    tracing::error!("No terminal found, please install one of the following: kitty, wezterm, urxvt, weston-terminal, or use the -c flag to specify a terminal");
-    ""
+    None
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,6 +49,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut data = CalloopData { state, display };
 
     crate::winit::init_winit(&mut event_loop, &mut data)?;
+    
+    let corrosion_config = CorrosionConfig::new();
+    let defaults = corrosion_config.get_defaults();
 
     let mut args = std::env::args().skip(1);
     let flag = args.next();
@@ -65,12 +67,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::Command::new(command).spawn().ok();
         }
         _ => {
-            // TODO: Make this configurable
-            // TODO: remove this completely as this shit is just for debugging
             // use the find_term function to find a terminal
-            let term = find_term();
-            if term != "" {
-                std::process::Command::new(term).spawn().ok();
+            if let Some(term) = find_term(&defaults) {
+                Command::new(term).spawn().ok();
+            }
+            else {
+                tracing::error!("Terminal in the toml config was not found!");
             }
         }
     }
