@@ -9,23 +9,49 @@ use smithay::{
         winit::{self, WinitError, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    reexports::calloop::{
-        timer::{TimeoutAction, Timer},
-        EventLoop,
+    reexports::{
+        calloop::{
+            timer::{TimeoutAction, Timer},
+            EventLoop, LoopSignal,
+        },
+        wayland_server::Display,
     },
     utils::{Rectangle, Transform},
 };
 
-use crate::{CalloopData, Corrosion};
+use crate::{state::Backend, CalloopData, Corrosion};
 
-pub fn init_winit(
-    event_loop: &mut EventLoop<CalloopData>,
-    data: &mut CalloopData,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // This code creates the display and the state for the compositor, initializes the backend and winit, and creates an output for the compositor.
+pub struct WinitData {
+    loop_signal: LoopSignal,
+}
 
-    let display = &mut data.display;
-    let state = &mut data.state;
+impl Backend for WinitData {
+    fn loop_signal(&self) -> &LoopSignal {
+        &self.loop_signal
+    }
+
+    fn seat_name(&self) -> String {
+        String::from("wayland-0")
+    }
+
+    fn early_import(&self, _output: &Output) {}
+
+    fn reset_buffers(
+        &self,
+        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+    }
+}
+
+pub fn init_winit<BackendData: Backend + 'static>() -> Result<(), Box<dyn std::error::Error>> {
+    let mut event_loop = EventLoop::try_new().expect("Unable to create callback loop");
+    let mut display = Display::new().expect("Unable to create display :(");
+    let backend_data = WinitData {
+        loop_signal: event_loop.get_signal(),
+    };
+
+    let mut state: Corrosion<WinitData> =
+        Corrosion::new(event_loop.handle(), &mut display, backend_data);
 
     let (mut backend, mut winit) = winit::init()?;
 
@@ -36,17 +62,16 @@ pub fn init_winit(
     };
 
     let output = Output::new(
-        "corrosionWM".to_string(),
+        String::from("Corrosionwm"),
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "corrosionWM".to_string(),
-            model: "Winit".to_string(),
+            make: "Corrosionwm".into(), // name of the window manager if you are running a window manager inside a window manager this might matter to you
+            model: "Winit".into(),
         },
     );
 
-    // This code sets the output mode, the orientation, the position, and the preferred mode.
-    let _global = output.create_global::<Corrosion>(&display.handle());
+    let _global = output.create_global::<Corrosion<BackendData>>(&display.handle());
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
@@ -66,6 +91,10 @@ pub fn init_winit(
 
     // This code creates a timer that will be used to redraw the window.
     let timer = Timer::immediate();
+    let mut data = CalloopData {
+        state,
+        display: display,
+    };
     event_loop
         .handle()
         .insert_source(timer, move |_, _, data| {
@@ -81,13 +110,17 @@ pub fn init_winit(
             TimeoutAction::ToDuration(Duration::from_millis(16))
         })?;
 
-    Ok(()) // Return Ok if everything went well
+    // aaand we run our loop :3
+    event_loop
+        .run(None, &mut data, move |_| {})
+        .expect("Unable to initialize winit backend");
+    Ok(())
 }
 
-pub fn winit_dispatch(
+pub fn winit_dispatch<BackendData: Backend>(
     backend: &mut WinitGraphicsBackend<Gles2Renderer>,
     winit: &mut WinitEventLoop,
-    data: &mut CalloopData,
+    data: &mut CalloopData<BackendData>,
     output: &Output,
     damage_tracked_renderer: &mut DamageTrackedRenderer,
     full_redraw: &mut u8,
@@ -125,8 +158,6 @@ pub fn winit_dispatch(
     // If the window is closed, stop the loop
     if let Err(WinitError::WindowClosed) = res {
         // Stop the loop
-        state.loop_signal.stop();
-        tracing::info!("Window closed, stopping loop");
 
         return Ok(());
     } else {

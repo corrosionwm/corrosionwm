@@ -1,4 +1,4 @@
-use crate::Corrosion;
+use crate::{state::Backend, Corrosion};
 use smithay::{
     desktop::Window,
     input::pointer::{
@@ -9,17 +9,19 @@ use smithay::{
     utils::{Logical, Point},
 };
 
-pub struct MoveSurfaceGrab {
-    pub start_data: PointerGrabStartData<Corrosion>,
+pub struct MoveSurfaceGrab<BackendData: Backend + 'static> {
+    pub start_data: PointerGrabStartData<Corrosion<BackendData>>,
     pub window: Window,
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl PointerGrab<Corrosion> for MoveSurfaceGrab {
+impl<BackendData: Backend + 'static> PointerGrab<Corrosion<BackendData>>
+    for MoveSurfaceGrab<BackendData>
+{
     fn motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         _focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &MotionEvent,
     ) {
@@ -34,8 +36,8 @@ impl PointerGrab<Corrosion> for MoveSurfaceGrab {
 
     fn relative_motion(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         focus: Option<(WlSurface, Point<i32, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
@@ -44,8 +46,8 @@ impl PointerGrab<Corrosion> for MoveSurfaceGrab {
 
     fn button(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
@@ -65,14 +67,14 @@ impl PointerGrab<Corrosion> for MoveSurfaceGrab {
 
     fn axis(
         &mut self,
-        data: &mut Corrosion,
-        handle: &mut PointerInnerHandle<'_, Corrosion>,
+        data: &mut Corrosion<BackendData>,
+        handle: &mut PointerInnerHandle<'_, Corrosion<BackendData>>,
         details: AxisFrame,
     ) {
         handle.axis(data, details)
     }
 
-    fn start_data(&self) -> &PointerGrabStartData<Corrosion> {
+    fn start_data(&self) -> &PointerGrabStartData<Corrosion<BackendData>> {
         &self.start_data
     }
 }

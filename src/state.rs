@@ -4,8 +4,9 @@ use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc};
 use smithay::{
     desktop::{Space, Window, WindowSurfaceType},
     input::{pointer::PointerHandle, Seat, SeatState},
+    output::Output,
     reexports::{
-        calloop::{generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
+        calloop::{generic::Generic, Interest, LoopHandle, LoopSignal, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
@@ -25,13 +26,13 @@ use smithay::{
 
 use crate::CalloopData;
 
-// define the state of the compositor
-pub struct Corrosion {
+pub struct Corrosion<BackendData: Backend + 'static> {
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
+    pub backend_data: BackendData,
 
     pub space: Space<Window>,
-    pub loop_signal: LoopSignal,
+    pub handle: LoopHandle<'static, CalloopData<BackendData>>,
 
     // Smithay State
     pub compositor_state: CompositorState,
@@ -39,32 +40,27 @@ pub struct Corrosion {
     pub xdg_decoration_state: XdgDecorationState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
-    pub seat_state: SeatState<Corrosion>,
+    pub seat_state: SeatState<Corrosion<BackendData>>,
     pub data_device_state: DataDeviceState,
 
     pub seat: Seat<Self>,
 }
 
-// impl the state of the compositor
-impl Corrosion {
-    pub fn new(event_loop: &mut EventLoop<CalloopData>, display: &mut Display<Self>) -> Self {
-        // This code does the following:
-        // 1. Creates a display handle
-        // 2. Creates a compositor state
-        // 3. Creates an XDG shell state
-        // 4. Creates an XDG decoration state
-        // 5. Creates a shared memory state
-        // 6. Creates an output manager state
-        // 7. Creates a seat state
-        // 8. Creates a data device state
 
+impl<BackendData: Backend + 'static> Corrosion<BackendData> {
+    pub fn new(
+        handle: LoopHandle<'static, CalloopData<BackendData>>,
+        display: &mut Display<Self>,
+        backend_data: BackendData,
+    ) -> Self {
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
-        let xdg_decoration_state = XdgDecorationState::new::<Corrosion>(&display.handle());
+        let xdg_decoration_state =
+            XdgDecorationState::new::<Corrosion<BackendData>>(&display.handle());
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -88,17 +84,16 @@ impl Corrosion {
         // Outputs become views of a part of the Space and can be rendered via Space::render_output.
         let space = Space::default();
 
-        let socket_name = Self::init_wayland_listener(display, event_loop);
-
-        // Get the loop signal, used to stop the event loop
-        let loop_signal = event_loop.get_signal();
+        let socket_name = Self::init_wayland_listener(display, &handle);
 
         // Return the state
         Self {
             start_time,
 
             space,
-            loop_signal,
+            handle,
+            backend_data,
+
             socket_name,
 
             compositor_state,
@@ -114,8 +109,8 @@ impl Corrosion {
 
     // This function is used to initialize the wayland listener
     fn init_wayland_listener(
-        display: &mut Display<Corrosion>,
-        event_loop: &mut EventLoop<CalloopData>,
+        display: &mut Display<Corrosion<BackendData>>,
+        event_loop: &LoopHandle<'static, CalloopData<BackendData>>,
     ) -> OsString {
         // Creates a new listening socket, automatically choosing the next available `wayland` socket name.
         let listening_socket = ListeningSocketSource::new_auto().unwrap();
@@ -124,10 +119,7 @@ impl Corrosion {
         // Clients will connect to this socket.
         let socket_name = listening_socket.socket_name().to_os_string();
 
-        let handle = event_loop.handle();
-
         event_loop
-            .handle()
             .insert_source(listening_socket, move |client_stream, _, state| {
                 // Inside the callback, you should insert the client into the display.
                 //
@@ -141,7 +133,7 @@ impl Corrosion {
             .expect("Failed to init the wayland event source.");
 
         // You also need to add the display itself to the event loop, so that client events will be processed by wayland-server.
-        handle
+        event_loop
             .insert_source(
                 Generic::new(
                     display.backend().poll_fd().as_raw_fd(),
@@ -176,6 +168,21 @@ impl Corrosion {
 
 pub struct ClientState;
 impl ClientData for ClientState {
-    fn initialized(&self, _client_id: ClientId) {}
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn initialized(&self, client_id: ClientId) {
+        tracing::debug!("Client id '{:?}' initialized", client_id);
+    }
+    fn disconnected(&self, client_id: ClientId, reason: DisconnectReason) {
+        tracing::debug!(
+            "Client id '{:?} disconnected with reason: {:?}",
+            client_id,
+            reason
+        );
+    }
+}
+
+pub trait Backend {
+    fn loop_signal(&self) -> &LoopSignal;
+    fn seat_name(&self) -> String;
+    fn early_import(&self, output: &Output);
+    fn reset_buffers(&self, surface: &WlSurface);
 }

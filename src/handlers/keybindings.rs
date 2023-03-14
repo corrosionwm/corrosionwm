@@ -3,7 +3,7 @@ use smithay::{
 };
 use std::process::Command;
 
-use crate::state::Corrosion;
+use crate::state::{Backend, Corrosion};
 
 // code to convert emacs style keybindings to xkb keysyms
 pub fn get_mod_key_and_compare(state: &ModifiersState) -> bool {
@@ -35,7 +35,7 @@ pub enum KeyAction {
     _Launcher(String),
 }
 
-impl Corrosion {
+impl<BackendData: Backend> Corrosion<BackendData> {
     pub fn parse_keybindings(&self, action: KeyAction) {
         match action {
             KeyAction::Spawn(program) => {
@@ -57,8 +57,7 @@ impl Corrosion {
             }
             KeyAction::Quit => {
                 // TODO: cleanup
-                tracing::info!("Quitting");
-                self.loop_signal.stop();
+                self.backend_data.loop_signal().stop();
             }
             KeyAction::_CloseWindow => {
                 // todo: put something here
