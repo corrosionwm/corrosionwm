@@ -38,15 +38,19 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                             // our shitty keybindings
                             // TODO: get rid of this shit
                             if handle.modified_sym() == keysyms::KEY_h | keysyms::KEY_H {
-                                println!("debug uwu");
+                                tracing::info!("running wofi");
                                 // TODO: Make this configurable
                                 action = KeyAction::Spawn(String::from("wofi --show drun"));
                             } else if handle.modified_sym() == keysyms::KEY_q | keysyms::KEY_Q {
-                                println!("bye bye");
+                                tracing::info!("Quitting");
                                 action = KeyAction::Quit;
                             } else if handle.modified_sym() == keysyms::KEY_Return {
-                                println!("spawn terminal");
+                                tracing::info!("spawn terminal");
+                                // TODO: Make this configurable
                                 action = KeyAction::Spawn(String::from("kitty"));
+                            } else if handle.modified_sym() == keysyms::KEY_x | keysyms::KEY_X {
+                                // TODO: make it so you can close windows
+                                action = KeyAction::_CloseWindow;
                             } else {
                                 return FilterResult::Forward;
                             }

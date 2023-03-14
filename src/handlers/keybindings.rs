@@ -1,4 +1,6 @@
-use smithay::input::keyboard::ModifiersState;
+use smithay::{
+    input::keyboard::ModifiersState,
+};
 use std::process::Command;
 
 use crate::state::{Backend, Corrosion};
@@ -43,7 +45,7 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                 if let Some(command) = args.get(0) {
                     program = command;
                 } else {
-                    eprintln!("Program argument in spawn is null");
+                    tracing::error!("Program argument in spawn is null");
                     return;
                 }
                 execution = Command::new(program);
@@ -51,13 +53,18 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                 println!("args: {:?}", args);
                 execution.args(args);
                 execution.spawn().ok();
+                tracing::info!("Spawned program: {}", program);
             }
             KeyAction::Quit => {
                 // TODO: cleanup
                 self.backend_data.loop_signal().stop();
             }
+            KeyAction::_CloseWindow => {
+                // todo: put something here
+                tracing::warn!("CloseWindow not implemented yet");
+            }
             _ => {
-                println!("Function not implemented yet");
+                tracing::error!("Function not implemented yet");
             }
         };
     }

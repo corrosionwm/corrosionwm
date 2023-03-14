@@ -1,3 +1,4 @@
+// imports
 use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc};
 
 use smithay::{
@@ -45,6 +46,7 @@ pub struct Corrosion<BackendData: Backend + 'static> {
     pub seat: Seat<Self>,
 }
 
+
 impl<BackendData: Backend + 'static> Corrosion<BackendData> {
     pub fn new(
         handle: LoopHandle<'static, CalloopData<BackendData>>,
@@ -84,6 +86,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
         let socket_name = Self::init_wayland_listener(display, &handle);
 
+        // Return the state
         Self {
             start_time,
 
@@ -104,6 +107,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         }
     }
 
+    // This function is used to initialize the wayland listener
     fn init_wayland_listener(
         display: &mut Display<Corrosion<BackendData>>,
         event_loop: &LoopHandle<'static, CalloopData<BackendData>>,
@@ -146,6 +150,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         socket_name
     }
 
+    // This function is used to get the surface under the pointer
     pub fn surface_under_pointer(
         &self,
         pointer: &PointerHandle<Self>,

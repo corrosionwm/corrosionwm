@@ -8,9 +8,13 @@ mod input;
 mod state;
 mod udev;
 mod winit;
+mod config;
 
 // imports
-pub use crate::state::Corrosion;
+pub use state::Corrosion;
+pub use crate::config::{CorrosionConfig, Defaults};
+use std::process::Command;
+use which;
 use crate::winit::{self as winit_corrosion, WinitData};
 use smithay::reexports::wayland_server::Display;
 use state::Backend;
@@ -22,16 +26,30 @@ pub struct CalloopData<BackendData: Backend + 'static> {
     display: Display<Corrosion<BackendData>>,
 }
 
+fn find_term(defaults: &Defaults) -> Option<&String> {
+    let terminal = &defaults.terminal;
+    if which::which(terminal).is_ok() {
+        return Some(terminal);
+    }
+    None
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
-        tracing::info!("env filter: {}", env_filter);
+    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_env("CORROSIONWM_LOG") {
+        // change this by changing the RUST_LOG environment variable
+        tracing::info!("logging initialized with env filter: {}", env_filter);
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
         tracing::info!("initialized with env filter successfully");
     } else {
         tracing_subscriber::fmt().init();
-        tracing::info!("no env filter found, using default");
+        tracing::info!("logging initialized with default filter");
     }
-
+    tracing::info!("logging initialized");
+    tracing::info!("Starting corrosionWM");
+    
+    let corrosion_config = CorrosionConfig::new();
+    let defaults = corrosion_config.get_defaults();
+    
     let backend = match env::var("CORROSION_BACKEND") {
         Ok(ret) => ret,
         Err(_) => String::from("udev"),
@@ -52,9 +70,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::Command::new(command).spawn().ok();
         }
         _ => {
-            // TODO: Make this configurable
-            // TODO: remove this completely as this shit is just for debugging
-            std::process::Command::new("kitty").spawn().expect("You may not have kitty installed, if not, please install it, or use the --command/-c flag to specify a different program to run.");
+            // use the find_term function to find a terminal
+            if let Some(term) = find_term(&defaults) {
+                Command::new(term).spawn().ok();
+            }
+            else {
+                tracing::error!("Terminal in the toml config was not found!");
+            }
         }
     }
 
