@@ -14,6 +14,7 @@ use std::process::Command;
 const DEFAULT_CONFIG: &str = r#"# This is the default corrosionwm config
 [defaults]
 terminal = "kitty"
+launcher = "wofi --show drun"
 "#;
 
 //top level data struct
@@ -27,6 +28,7 @@ pub struct CorrosionConfig {
 #[derive(Deserialize)]
 pub struct Defaults {
     pub terminal: String,
+    pub launcher: String,
 }
 
 fn get_username() -> String {

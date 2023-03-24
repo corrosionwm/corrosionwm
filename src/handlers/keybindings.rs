@@ -64,6 +64,23 @@ impl Corrosion {
                 // todo: put something here
                 tracing::warn!("CloseWindow not implemented yet");
             }
+            KeyAction::_Launcher(program) => {
+                let mut args: Vec<&str> = program.split(' ').collect();
+                let program: &str;
+                let mut execution;
+                if let Some(command) = args.get(0) {
+                    program = command;
+                } else {
+                    tracing::error!("Program argument in spawn is null");
+                    return;
+                }
+                execution = Command::new(program);
+                args.remove(0);
+                println!("args: {:?}", args);
+                execution.args(args);
+                execution.spawn().ok();
+                tracing::info!("Spawned program: {}", program);
+            }
             _ => {
                 tracing::error!("Function not implemented yet");
             }

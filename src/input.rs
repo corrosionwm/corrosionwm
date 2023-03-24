@@ -14,7 +14,7 @@ use smithay::{
 use crate::{
     grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::keybindings::{self, KeyAction},
-    state::Corrosion,
+    state::Corrosion, CorrosionConfig,
 };
 
 impl Corrosion {
@@ -37,17 +37,19 @@ impl Corrosion {
                         {
                             // our shitty keybindings
                             // TODO: get rid of this shit
+                            let corrosion_config = CorrosionConfig::new();
+                            let defaults = corrosion_config.get_defaults();
                             if handle.modified_sym() == keysyms::KEY_h | keysyms::KEY_H {
                                 tracing::info!("running wofi");
-                                // TODO: Make this configurable
-                                action = KeyAction::Spawn(String::from("wofi --show drun"));
+                                let launcher = &defaults.launcher;
+                                action = KeyAction::_Launcher(launcher.to_string());
                             } else if handle.modified_sym() == keysyms::KEY_q | keysyms::KEY_Q {
                                 tracing::info!("Quitting");
                                 action = KeyAction::Quit;
                             } else if handle.modified_sym() == keysyms::KEY_Return {
                                 tracing::info!("spawn terminal");
-                                // TODO: Make this configurable
-                                action = KeyAction::Spawn(String::from("kitty"));
+                                let terminal = &defaults.terminal;
+                                action = KeyAction::Spawn(terminal.to_string());
                             } else if handle.modified_sym() == keysyms::KEY_x | keysyms::KEY_X {
                                 // TODO: make it so you can close windows
                                 action = KeyAction::_CloseWindow;

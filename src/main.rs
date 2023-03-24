@@ -72,7 +72,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Command::new(term).spawn().ok();
             }
             else {
-                tracing::error!("Terminal in the toml config was not found!");
+                tracing::error!("Terminal in the toml config was not found! Falling back to kitty");
+                Command::new("kitty").spawn().ok();
             }
         }
     }
