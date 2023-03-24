@@ -5,8 +5,9 @@ CorrosionWM is a blazing fast [Wayland compositor](https://wayland.freedesktop.o
 
 [//]: # (I have no clue where this project is going, so here will be some placeholder items)
 
-- [x] Can display terminal
-- [ ] Keyboard works
+- [x] Can display simple applications
+- [X] Keyboard works
+- [ ] Can launch from TTY
 
 ## Contributing
 To contribute your own code, start by forking this project and installing the necessary dependencies listed below.
