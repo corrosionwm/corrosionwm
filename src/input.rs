@@ -14,7 +14,8 @@ use smithay::{
 use crate::{
     grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::keybindings::{self, KeyAction},
-    state::Corrosion, CorrosionConfig,
+    state::Corrosion,
+    CorrosionConfig,
 };
 
 impl Corrosion {
@@ -62,11 +63,8 @@ impl Corrosion {
                         FilterResult::Intercept(action)
                     },
                 );
-                match action {
-                    Some(action) => {
-                        self.parse_keybindings(action);
-                    }
-                    None => {}
+                if let Some(action) = action {
+                    self.parse_keybindings(action);
                 }
             }
             InputEvent::PointerMotion { .. } => {}
@@ -137,7 +135,7 @@ impl Corrosion {
                             match button {
                                 0x110 => {
                                     let move_grab = MoveSurfaceGrab {
-                                        start_data: start_data.clone(),
+                                        start_data,
                                         window,
                                         initial_window_location,
                                     };

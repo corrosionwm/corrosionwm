@@ -3,18 +3,17 @@
 // modules
 mod handlers;
 
+mod config;
 mod grabs;
 mod input;
 mod state;
 mod winit;
-mod config;
 
 // imports
+pub use crate::config::{CorrosionConfig, Defaults};
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 pub use state::Corrosion;
-pub use crate::config::{CorrosionConfig, Defaults};
 use std::process::Command;
-use which;
 
 pub struct CalloopData {
     state: Corrosion,
@@ -49,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut data = CalloopData { state, display };
 
     crate::winit::init_winit(&mut event_loop, &mut data)?;
-    
+
     let corrosion_config = CorrosionConfig::new();
     let defaults = corrosion_config.get_defaults();
 
@@ -68,10 +67,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             // use the find_term function to find a terminal
-            if let Some(term) = find_term(&defaults) {
+            if let Some(term) = find_term(defaults) {
                 Command::new(term).spawn().ok();
-            }
-            else {
+            } else {
                 tracing::error!("Terminal in the toml config was not found! Falling back to kitty");
                 Command::new("kitty").spawn().ok();
             }

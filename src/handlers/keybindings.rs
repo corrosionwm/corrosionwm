@@ -1,6 +1,4 @@
-use smithay::{
-    input::keyboard::ModifiersState,
-};
+use smithay::input::keyboard::ModifiersState;
 use std::process::Command;
 
 use crate::state::Corrosion;
@@ -42,7 +40,7 @@ impl Corrosion {
                 let mut args: Vec<&str> = program.split(' ').collect();
                 let program: &str;
                 let mut execution;
-                if let Some(command) = args.get(0) {
+                if let Some(command) = args.first() {
                     program = command;
                 } else {
                     tracing::error!("Program argument in spawn is null");
@@ -68,7 +66,7 @@ impl Corrosion {
                 let mut args: Vec<&str> = program.split(' ').collect();
                 let program: &str;
                 let mut execution;
-                if let Some(command) = args.get(0) {
+                if let Some(command) = args.first() {
                     program = command;
                 } else {
                     tracing::error!("Program argument in spawn is null");
@@ -80,9 +78,6 @@ impl Corrosion {
                 execution.args(args);
                 execution.spawn().ok();
                 tracing::info!("Spawned program: {}", program);
-            }
-            _ => {
-                tracing::error!("Function not implemented yet");
             }
         };
     }
