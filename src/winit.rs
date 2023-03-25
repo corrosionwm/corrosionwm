@@ -14,7 +14,7 @@ use smithay::{
             timer::{TimeoutAction, Timer},
             EventLoop, LoopSignal,
         },
-        wayland_server::Display,
+        wayland_server::{protocol::wl_surface::WlSurface, Display},
     },
     utils::{Rectangle, Transform},
 };
@@ -34,13 +34,9 @@ impl Backend for WinitData {
         String::from("wayland-0")
     }
 
-    fn early_import(&self, _output: &Output) {}
+    fn early_import(&mut self, _output: &WlSurface) {}
 
-    fn reset_buffers(
-        &self,
-        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) {
-    }
+    fn reset_buffers(&self, _surface: &Output) {}
 }
 
 pub fn init_winit<BackendData: Backend + 'static>() -> Result<(), Box<dyn std::error::Error>> {

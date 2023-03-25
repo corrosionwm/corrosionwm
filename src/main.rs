@@ -3,23 +3,23 @@
 // modules
 mod handlers;
 
+mod backend;
+mod config;
 mod grabs;
 mod input;
 mod state;
-mod udev;
 mod winit;
-mod config;
 
 // imports
-pub use state::Corrosion;
 pub use crate::config::{CorrosionConfig, Defaults};
-use std::process::Command;
-use which;
 use crate::winit::{self as winit_corrosion, WinitData};
 use smithay::reexports::wayland_server::Display;
 use state::Backend;
+pub use state::Corrosion;
 use std::env;
+use std::process::Command;
 use tracing::debug;
+use which;
 
 pub struct CalloopData<BackendData: Backend + 'static> {
     state: Corrosion<BackendData>,
@@ -46,10 +46,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     tracing::info!("logging initialized");
     tracing::info!("Starting corrosionWM");
-    
+
     let corrosion_config = CorrosionConfig::new();
     let defaults = corrosion_config.get_defaults();
-    
+
     let backend = match env::var("CORROSION_BACKEND") {
         Ok(ret) => ret,
         Err(_) => String::from("udev"),
@@ -73,8 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // use the find_term function to find a terminal
             if let Some(term) = find_term(&defaults) {
                 Command::new(term).spawn().ok();
-            }
-            else {
+            } else {
                 tracing::error!("Terminal in the toml config was not found!");
             }
         }

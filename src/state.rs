@@ -44,8 +44,8 @@ pub struct Corrosion<BackendData: Backend + 'static> {
     pub data_device_state: DataDeviceState,
 
     pub seat: Seat<Self>,
+    pub seat_name: String,
 }
-
 
 impl<BackendData: Backend + 'static> Corrosion<BackendData> {
     pub fn new(
@@ -92,6 +92,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
             space,
             handle,
+            seat_name: backend_data.seat_name(),
             backend_data,
 
             socket_name,
@@ -183,6 +184,6 @@ impl ClientData for ClientState {
 pub trait Backend {
     fn loop_signal(&self) -> &LoopSignal;
     fn seat_name(&self) -> String;
-    fn early_import(&self, output: &Output);
-    fn reset_buffers(&self, surface: &WlSurface);
+    fn early_import(&mut self, output: &WlSurface);
+    fn reset_buffers(&self, surface: &Output);
 }
