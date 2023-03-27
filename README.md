@@ -57,3 +57,11 @@ sudo apt install libudev-dev libdbus-1-dev pkg-config libsystemd-dev libwayland-
 ```bash
 sudo pacman -Syu wayland wayland-protocols libinput libxkbcommon libglvnd seatd dbus-glib 
 ```
+
+### NixOS or systems with the nix package manager installed
+
+The dependencies are provided in shell.nix, and you can easily make a nix-shell environment with the dependenices installed by executing the following command in the cloned repository directory:
+
+```bash
+nix-shell
+```
