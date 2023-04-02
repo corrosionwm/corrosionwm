@@ -1,9 +1,7 @@
 use serde_derive::Deserialize;
-use toml;
-use tracing;
 
-use std::fs::{self, read_to_string, create_dir_all};
 use std::env;
+use std::fs::{self, create_dir_all, read_to_string};
 use std::path::Path;
 use std::process::Command;
 
@@ -14,6 +12,7 @@ use std::process::Command;
 const DEFAULT_CONFIG: &str = r#"# This is the default corrosionwm config
 [defaults]
 terminal = "kitty"
+launcher = "wofi --show drun"
 "#;
 
 //top level data struct
@@ -27,6 +26,7 @@ pub struct CorrosionConfig {
 #[derive(Deserialize)]
 pub struct Defaults {
     pub terminal: String,
+    pub launcher: String,
 }
 
 fn get_username() -> String {
@@ -36,9 +36,7 @@ fn get_username() -> String {
             user = val;
         }
         Err(_) => {
-            let whoami_output = Command::new("whoami")
-                .output()
-                .unwrap();
+            let whoami_output = Command::new("whoami").output().unwrap();
             user = String::from_utf8_lossy(&whoami_output.stdout).to_string();
         }
     }
@@ -56,7 +54,10 @@ impl CorrosionConfig {
 
         //check for ~/.config/corrosionwm
         if !Path::new(&config_directory).exists() {
-            tracing::info!("Config folder not found, Creating at '{}'.", config_directory);
+            tracing::info!(
+                "Config folder not found, Creating at '{}'.",
+                config_directory
+            );
             create_dir_all(config_directory).unwrap();
         }
 
@@ -72,15 +73,24 @@ impl CorrosionConfig {
                 c
             }
             Err(_) => {
-                tracing::error!("Config file is not valid, falling back to default hardcoded config.");
+                tracing::error!(
+                    "Config file is not valid, falling back to default hardcoded config."
+                );
                 tracing::info!("Loaded hardcoded config file");
                 toml::from_str(DEFAULT_CONFIG).unwrap()
             }
-        }
+        };
     }
 
     //fetches the [defaults] section and returns it
     pub fn get_defaults(&self) -> &Defaults {
         &self.defaults
+    }
+}
+
+impl Default for CorrosionConfig {
+    fn default() -> Self {
+        // return the default config
+        toml::from_str(DEFAULT_CONFIG).unwrap()
     }
 }

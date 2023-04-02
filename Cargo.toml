@@ -2,6 +2,15 @@
 name = "corrosionwm"
 version = "0.1.0"
 edition = "2021"
+authors = ["electron271 <aveanzaldua@gmail.com>", "a weeb programmer"]
+description = "A Wayland compositor written in Rust"
+license = "MIT"
+repository = "https://github.com/corrosionwm/corrosionwm"
+readme = "README.md"
+keywords = ["wayland", "compositor", "rust", "smithay", "corrosionwm"]
+categories = ["window-managers"]
+documentation = "https://docs.rs/crate/corrosionwm"
+homepage = "https://www.corrosionwm.gay/"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,7 +19,8 @@ smithay = { git = "https://github.com/Smithay/smithay", features = [ "backend_wi
 xcursor = "0.3.4"
 image = "0.24.5"
 renderdoc = "0.11.0"
-bitflags = "1.3.2"
+bitflags = "1.3.2" # outdated version matches smithay
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 which = "4.4.0"

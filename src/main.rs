@@ -47,6 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("logging initialized");
     tracing::info!("Starting corrosionWM");
 
+
     let corrosion_config = CorrosionConfig::new();
     let defaults = corrosion_config.get_defaults();
 
@@ -71,9 +72,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         _ => {
             // use the find_term function to find a terminal
-            if let Some(term) = find_term(&defaults) {
+            if let Some(term) = find_term(defaults) {
+                Command::new(term).spawn().ok();
             } else {
-                tracing::error!("Terminal in the toml config was not found!");
+                tracing::error!("Terminal in the toml config was not found! Falling back to kitty");
+                Command::new("kitty").spawn().ok();
             }
         }
     }
