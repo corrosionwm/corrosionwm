@@ -3,6 +3,7 @@
 // modules
 mod handlers;
 
+mod backend;
 mod config;
 mod grabs;
 mod input;
@@ -11,13 +12,18 @@ mod winit;
 
 // imports
 pub use crate::config::{CorrosionConfig, Defaults};
-use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
+use crate::winit::{self as winit_corrosion, WinitData};
+use smithay::reexports::wayland_server::Display;
+use state::Backend;
 pub use state::Corrosion;
+use std::env;
 use std::process::Command;
+use tracing::debug;
+use which;
 
-pub struct CalloopData {
-    state: Corrosion,
-    display: Display<Corrosion>,
+pub struct CalloopData<BackendData: Backend + 'static> {
+    state: Corrosion<BackendData>,
+    display: Display<Corrosion<BackendData>>,
 }
 
 fn find_term(defaults: &Defaults) -> Option<&String> {
@@ -33,6 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // change this by changing the RUST_LOG environment variable
         tracing::info!("logging initialized with env filter: {}", env_filter);
         tracing_subscriber::fmt().with_env_filter(env_filter).init();
+        tracing::info!("initialized with env filter successfully");
     } else {
         tracing_subscriber::fmt().init();
         tracing::info!("logging initialized with default filter");
@@ -40,17 +47,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("logging initialized");
     tracing::info!("Starting corrosionWM");
 
-    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new()?;
-
-    let mut display: Display<Corrosion> = Display::new()?;
-    let state = Corrosion::new(&mut event_loop, &mut display);
-
-    let mut data = CalloopData { state, display };
-
-    crate::winit::init_winit(&mut event_loop, &mut data)?;
 
     let corrosion_config = CorrosionConfig::new();
     let defaults = corrosion_config.get_defaults();
+
+    let backend = match env::var("CORROSION_BACKEND") {
+        Ok(ret) => ret,
+        Err(_) => String::from("udev"),
+    };
+    debug!("Udev backend initialized successfully!");
 
     let mut args = std::env::args().skip(1);
     let flag = args.next();
@@ -76,10 +81,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    tracing::info!("Starting corrosionWM event loop");
-    event_loop.run(None, &mut data, move |_| {
-        // corrosionWM is running
-    })?;
+    match backend.as_ref() {
+        "winit" => {
+            winit_corrosion::init_winit::<WinitData>()
+                .expect("Unable to initialize winit backend :(");
+        }
+        "udev" => {
+            backend::initialize_backend();
+        }
+        _ => {
+            tracing::error!("Backend setting not known");
+        }
+    };
 
     Ok(())
 }

@@ -20,8 +20,8 @@ xcursor = "0.3.4"
 image = "0.24.5"
 renderdoc = "0.11.0"
 bitflags = "1.3.2" # outdated version matches smithay
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 which = "4.4.0"
 toml = "0.7.2"
 serde = "1.0.155"
