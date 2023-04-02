@@ -99,7 +99,7 @@ pub fn initialize_backend() {
         allocator: None,
         gpu_manager: gpus,
     };
-    let state = Corrosion::new(event_loop.handle(), &mut display, data);
+    let mut state = Corrosion::new(event_loop.handle(), &mut display, data);
     let backend = match UdevBackend::new(&state.seat_name) {
         Ok(backend) => backend,
         Err(err) => {
@@ -107,6 +107,10 @@ pub fn initialize_backend() {
             return;
         }
     };
+
+    for (dev, path) in backend.device_list() {
+        gbm::run_gbm(&mut state.backend_data.session, dev, path);
+    }
 
     event_loop
         .handle()

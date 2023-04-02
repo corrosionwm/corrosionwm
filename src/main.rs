@@ -72,7 +72,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => {
             // use the find_term function to find a terminal
             if let Some(term) = find_term(&defaults) {
-                Command::new(term).spawn().ok();
             } else {
                 tracing::error!("Terminal in the toml config was not found!");
             }
@@ -85,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .expect("Unable to initialize winit backend :(");
         }
         "udev" => {
-            tracing::error!("Udev backend is not yet supported by corrosionwm");
+            backend::initialize_backend();
         }
         _ => {
             tracing::error!("Backend setting not known");
