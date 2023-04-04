@@ -106,7 +106,7 @@ pub fn run_gbm(session: &mut LibSeatSession, dev_id: dev_t, path: &Path) {
     let device_file = unsafe {
         DeviceFd::from_raw_fd(
             session
-                .open(path, OFlag::O_RDWR | OFlag::O_CLOEXEC)
+                .open(path, OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_NOCTTY | OFlag::O_NONBLOCK)
                 .expect("Failed to open drm node"),
         )
     };
