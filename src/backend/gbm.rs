@@ -72,7 +72,12 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
     }
     // Create a render buffer to store the pixel data
     let mut buffer = device
-        .create_buffer_object::<()>(1920, 1080, Fourcc::Abgr8888, BufferObjectFlags::RENDERING)
+        .create_buffer_object::<()>(
+            1920,
+            1080,
+            Fourcc::Abgr8888,
+            BufferObjectFlags::RENDERING | BufferObjectFlags::SCANOUT,
+        )
         .expect("Unable to allocate render buffer");
     let pixel_data = {
         let mut data = Vec::new();
@@ -85,7 +90,6 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
     };
     buffer
         .write(&pixel_data)
-        .expect("Unable to write to buffer")
         .expect("Unable to write to buffer");
 
     let fb = &device.add_framebuffer(&buffer, 32, 32).unwrap();
@@ -96,7 +100,14 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
             Some(*fb),
             (0, 0),
             &connectors,
-            None,
+            Some(
+                *device
+                    .get_connector(*connectors.get(0).unwrap(), false)
+                    .unwrap()
+                    .modes()
+                    .get(0)
+                    .unwrap(),
+            ),
         )
         .expect("Unable to set crtc for display");
 }
@@ -106,7 +117,10 @@ pub fn run_gbm(session: &mut LibSeatSession, dev_id: dev_t, path: &Path) {
     let device_file = unsafe {
         DeviceFd::from_raw_fd(
             session
-                .open(path, OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_NOCTTY | OFlag::O_NONBLOCK)
+                .open(
+                    path,
+                    OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_NOCTTY | OFlag::O_NONBLOCK,
+                )
                 .expect("Failed to open drm node"),
         )
     };
