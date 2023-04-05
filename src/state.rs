@@ -54,6 +54,9 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         backend_data: BackendData,
     ) -> Self {
         // nitelite
+        // watch nitelites streams they are great :3
+        // https://twitter.com/nitelitevt
+        // shameless plug :trollface:
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
