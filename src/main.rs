@@ -90,9 +90,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             backend::initialize_backend();
         }
         _ => {
-            tracing::error!("Backend setting not known");
+            tracing::error!("Backend setting not known, defaulting to udev");
+            tracing::error!("Backend setting was: {}", backend);
+            backend::initialize_backend();
         }
     };
+
+    // TODO: event loop for udev backend
 
     Ok(())
 }

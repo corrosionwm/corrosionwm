@@ -7,7 +7,7 @@ use smithay::{
             gbm::GbmDevice,
             Allocator, Fourcc, Modifier,
         },
-        drm::{DrmDevice, DrmDeviceFd, DrmNode},
+        drm::{DrmDeviceFd, DrmNode},
         session::{libseat::LibSeatSession, Session},
     },
     reexports::{
@@ -35,6 +35,7 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
                 State::Connected => {
                     // If it's connected, add it to the connector vec
                     connectors.push(*handle);
+                    tracing::debug!("Found connector: {:?}", info.interface());
                 }
                 State::Disconnected => {
                     // If it's disconnected, do nothing
@@ -58,10 +59,12 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
                 match info.framebuffer() {
                     Some(_) => {
                         // Crtc is already assigned a framebuffer. Do nothing
+                        tracing::debug!("Crtc already in use: {:?}", handle);
                     }
                     None => {
                         // If crtc isn't already in use, add it to the list of valid crtcs
                         valid_crtcs.push(*handle);
+                        tracing::debug!("Found valid crtc: {:?}", handle)
                     }
                 }
             }
@@ -73,16 +76,16 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
     // Create a render buffer to store the pixel data
     let mut buffer = device
         .create_buffer_object::<()>(
-            1920,
+            1920, // IMPORTANT! i may be wrong, but you should not guess the size of the buffer. You should get the size of the connector
             1080,
-            Fourcc::Abgr8888,
+            Fourcc::Abgr8888, // maybe add support for other formats? i dunno
             BufferObjectFlags::RENDERING | BufferObjectFlags::SCANOUT,
         )
         .expect("Unable to allocate render buffer");
     let pixel_data = {
         let mut data = Vec::new();
         for i in 0..1920 {
-            for _ in 0..1080 {
+            for _ in 0..1080 { // again, i may be wrong, but you should not guess the size of the buffer. You should get the size of the connector
                 data.push(if i % 2 == 0 { 0 } else { 255 });
             }
         }
@@ -90,13 +93,14 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
     };
     buffer
         .write(&pixel_data)
-        .expect("Unable to write to buffer");
+        .expect("Unable to write to buffer")
+        .expect("Unable to write to buffer"); // ignore the double expect for now
 
-    let fb = &device.add_framebuffer(&buffer, 32, 32).unwrap();
+    let fb = &device.add_framebuffer(&buffer, 32, 32).unwrap(); // i may be wrong but dont guess the color depth
 
     device
         .set_crtc(
-            *valid_crtcs.get(0).unwrap(),
+            *valid_crtcs.get(0).unwrap(), // why are you only using the first crtc? you should use all of them
             Some(*fb),
             (0, 0),
             &connectors,
@@ -114,6 +118,7 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
 
 pub fn run_gbm(session: &mut LibSeatSession, dev_id: dev_t, path: &Path) {
     let node = DrmNode::from_dev_id(dev_id);
+    tracing::debug!("Found drm node: {:?}", node);
     let device_file = unsafe {
         DeviceFd::from_raw_fd(
             session
@@ -124,6 +129,7 @@ pub fn run_gbm(session: &mut LibSeatSession, dev_id: dev_t, path: &Path) {
                 .expect("Failed to open drm node"),
         )
     };
+    tracing::info!("Opened drm node: {:?}", device_file);
     let fd = DrmDeviceFd::new(device_file);
     let device = GbmDevice::new(fd).unwrap();
     render(&device);
@@ -139,6 +145,7 @@ fn allocate_buffer(
         &[Modifier::Linear, Modifier::Generic_16_16_tile],
     ) {
         Ok(buffer) => {
+            tracing::debug!("Created a gbm buffer: {:?}", buffer);
             return buffer;
         }
         Err(err) => {
