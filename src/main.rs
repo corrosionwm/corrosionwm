@@ -47,6 +47,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("logging initialized");
     tracing::info!("Starting corrosionWM");
 
+    // if using nvidia, error out
+    if let Ok(nvidia) = std::fs::read_to_string("/proc/driver/nvidia/version") {
+        if nvidia.contains("NVIDIA") {
+            tracing::error!("Currently as corrosionWM does not support EGL, it cannot be used with the NVIDIA driver. Please use the nouveau driver instead.");
+        }
+    }
 
     let corrosion_config = CorrosionConfig::new();
     let defaults = corrosion_config.get_defaults();
