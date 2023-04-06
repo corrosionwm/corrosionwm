@@ -21,7 +21,7 @@ Join our [Discord](https://discord.gg/6sRvfeaNbQ)!
 - [ ] Can launch from display manager (WIP)
 - [ ] NVIDIA support (will be buggy due to [this](https://arewewaylandyet.com/) (see "NVIDIA"), and will likely need nouveau drivers)
 - [ ] Can launch popups
-- [ ] Can launch from TTY
+- [x] Can launch from TTY (kind of)
 
 ## Contributing
 
