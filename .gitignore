@@ -12,3 +12,8 @@ target/
 # electron271's utilities
 nightly.sh
 nightly*
+log.txt
+debug.txt
+debug.log
+fixmystupidcode.sh
+*.fixedmystupidcode.bak
