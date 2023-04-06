@@ -55,7 +55,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
     ) -> Self {
         // nitelite
         // watch nitelites streams they are great :3
-        // https://twitter.com/nitelitevt
+        // https://twitch.tv/nitelitevt
         // shameless plug :trollface:
         let start_time = std::time::Instant::now();
 
