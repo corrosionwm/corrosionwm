@@ -16,4 +16,4 @@ log.txt
 debug.txt
 debug.log
 fixmystupidcode.sh
-*.fixedmystupidcode.bak
+**/*.fixedmystupidcode.bak
