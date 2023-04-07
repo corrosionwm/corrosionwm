@@ -1,6 +1,12 @@
 // imports
 use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc};
 
+ // nitelite's plug
+        // watch nitelite's streams they are great :3
+        // and she is a very cool firefly
+        // https://twitch.tv/nitelitevt
+        // shameless plug :trollface:
+
 use smithay::{
     desktop::{Space, Window, WindowSurfaceType},
     input::{pointer::PointerHandle, Seat, SeatState},
