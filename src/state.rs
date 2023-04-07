@@ -53,10 +53,6 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         display: &mut Display<Self>,
         backend_data: BackendData,
     ) -> Self {
-        // nitelite
-        // watch nitelites streams they are great :3
-        // https://twitch.tv/nitelitevt
-        // shameless plug :trollface:
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
