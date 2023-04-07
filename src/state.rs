@@ -1,11 +1,11 @@
 // imports
 use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc};
 
- // nitelite's plug
-        // watch nitelite's streams they are great :3
-        // and she is a very cool firefly
-        // https://twitch.tv/nitelitevt
-        // shameless plug :trollface:
+// nitelite's plug
+// watch nitelite's streams they are great :3
+// and she is a very cool firefly
+// https://twitch.tv/nitelitevt
+// shameless plug :trollface:
 
 use smithay::{
     desktop::{Space, Window, WindowSurfaceType},
@@ -59,10 +59,6 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         display: &mut Display<Self>,
         backend_data: BackendData,
     ) -> Self {
-        // nitelite
-        // watch nitelites streams they are great :3
-        // https://twitch.tv/nitelitevt
-        // shameless plug :trollface:
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
