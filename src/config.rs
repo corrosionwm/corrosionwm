@@ -49,7 +49,12 @@ impl CorrosionConfig {
         //check if ~/.config/corrosionwm/config.toml exists
         //if not, create it with the default configuration
         let username = get_username();
-        let config_directory = format!("/home/{}/.config/corrosionwm", username);
+        
+        let config_directory = match env::var("XDG_CONFIG_HOME") {
+            Ok(val) => format!("{}/corrosionwm", val),
+            Err(_) => "~/.config/corrosionwm".to_string()
+        };
+
         let config_file = format!("{}/config.toml", config_directory);
 
         //check for ~/.config/corrosionwm
