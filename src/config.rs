@@ -50,9 +50,13 @@ impl CorrosionConfig {
         //if not, create it with the default configuration
         let username = get_username();
         
+        // try everything before just using /home/username
         let config_directory = match env::var("XDG_CONFIG_HOME") {
             Ok(val) => format!("{}/corrosionwm", val),
-            Err(_) => "~/.config/corrosionwm".to_string()
+            Err(_) => format!("{}/.config/corrosionwm", match env::var("HOME") {
+                Ok(val) => val,
+                Err(_) => format!("/home/{}", username)
+            })
         };
 
         let config_file = format!("{}/config.toml", config_directory);
