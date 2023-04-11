@@ -29,34 +29,13 @@ pub struct Defaults {
     pub launcher: String,
 }
 
-fn get_username() -> String {
-    let user;
-    match env::var("USER") {
-        Ok(val) => {
-            user = val;
-        }
-        Err(_) => {
-            let whoami_output = Command::new("whoami").output().unwrap();
-            user = String::from_utf8_lossy(&whoami_output.stdout).to_string();
-        }
-    }
-    user
-}
-
 impl CorrosionConfig {
     //initialize corrosion config
     pub fn new() -> Self {
-        //check if ~/.config/corrosionwm/config.toml exists
-        //if not, create it with the default configuration
-        let username = get_username();
-        
-        // try everything before just using /home/username
+        // use $XDG_CONFIG_HOME, or fallback to $HOME/.config
         let config_directory = match env::var("XDG_CONFIG_HOME") {
             Ok(val) => format!("{}/corrosionwm", val),
-            Err(_) => format!("{}/.config/corrosionwm", match env::var("HOME") {
-                Ok(val) => val,
-                Err(_) => format!("/home/{}", username)
-            })
+            Err(_) => format!("{}/.config/corrosionwm", env::var("HOME").unwrap())
         };
 
         let config_file = format!("{}/config.toml", config_directory);
