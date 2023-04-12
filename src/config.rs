@@ -35,7 +35,7 @@ impl CorrosionConfig {
         // use $XDG_CONFIG_HOME, or fallback to $HOME/.config
         let config_directory = match env::var("XDG_CONFIG_HOME") {
             Ok(val) => format!("{}/corrosionwm", val),
-            Err(_) => format!("{}/.config/corrosionwm", env::var("HOME").unwrap())
+            Err(_) => format!("{}/.config/corrosionwm", env::var("HOME").unwrap()),
         };
 
         let config_file = format!("{}/config.toml", config_directory);
