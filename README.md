@@ -8,6 +8,8 @@
     <img src="https://img.shields.io/github/license/corrosionwm/corrosionwm?style=for-the-badge"/>
     <img src="https://img.shields.io/github/issues/corrosionwm/corrosionwm?style=for-the-badge"/>
   </p>
+  
+![workflow badge](https://github.com/corrosionwm/corrosionwm/actions/workflows/rust.yml/badge.svg)
 
 ## About
 
@@ -62,8 +64,8 @@ sudo pacman -Syu wayland wayland-protocols libinput libxkbcommon libglvnd seatd 
 
 ### NixOS or systems with the nix package manager installed
 
-The dependencies are provided in shell.nix, and you can easily make a nix-shell environment with the dependenices installed by executing the following command in the cloned repository directory:
+This repository is a flake, and you can easily make a development shell environment with the dependenices installed by executing the following command in the cloned repository directory (btw, you need to [enable flakes](https://nixos.wiki/wiki/Flakes#Enable_flakes) for this to work):
 
 ```bash
-nix-shell
+nix develop
 ```
