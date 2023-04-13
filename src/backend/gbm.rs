@@ -85,7 +85,8 @@ fn render(device: &GbmDevice<DrmDeviceFd>) {
     let pixel_data = {
         let mut data = Vec::new();
         for i in 0..1920 {
-            for _ in 0..1080 { // again, i may be wrong, but you should not guess the size of the buffer. You should get the size of the connector
+            for _ in 0..1080 {
+                // again, i may be wrong, but you should not guess the size of the buffer. You should get the size of the connector
                 data.push(if i % 2 == 0 { 0 } else { 255 });
             }
         }
