@@ -3,17 +3,13 @@ use std::collections::HashMap;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf, DmabufAllocator},
-            gbm::GbmAllocator,
+            dmabuf::{AnyError, Dmabuf},
             Allocator,
         },
         drm::{DrmNode, NodeType},
         renderer::{
             gles::GlesRenderer,
-            multigpu::{
-                gbm::{GbmGlesBackend, GbmGlesDevice},
-                GpuManager,
-            },
+            multigpu::{gbm::GbmGlesBackend, GpuManager},
         },
         session::libseat::LibSeatSession,
         session::Session,
@@ -26,7 +22,7 @@ use smithay::{
 };
 
 use self::drm::BackendData;
-use crate::{state::Backend, CalloopData, Corrosion};
+use crate::{state::Backend, Corrosion};
 
 mod drm;
 
@@ -54,7 +50,7 @@ impl Backend for UdevData {
         &self.loop_signal
     }
 
-    fn reset_buffers(&self, surface: &smithay::output::Output) {
+    fn reset_buffers(&self, _surface: &smithay::output::Output) {
         todo!();
     }
 
@@ -64,8 +60,8 @@ impl Backend for UdevData {
 }
 
 pub fn initialize_backend() {
-    let mut event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
-    let (mut session, mut notifier) = match LibSeatSession::new() {
+    let event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
+    let (session, mut _notifier) = match LibSeatSession::new() {
         Ok((session, notifier)) => (session, notifier),
         Err(err) => {
             tracing::error!("Error in creating libseat session: {}", err);

@@ -1,33 +1,36 @@
 use std::{collections::HashMap, os::fd::FromRawFd};
 
 use super::UdevData;
-use crate::{state::Backend, Corrosion};
+use crate::Corrosion;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf},
+            dmabuf::Dmabuf,
             gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-            Allocator, Fourcc, Modifier,
+            Fourcc,
         },
-        drm::{compositor::DrmCompositor, DrmDevice, DrmDeviceFd, DrmNode, GbmBufferedSurface},
+        drm::{
+            compositor::DrmCompositor, DrmDevice, DrmDeviceFd, DrmNode, DrmSurface,
+            GbmBufferedSurface,
+        },
         egl::{display::EGLDisplay, EGLDevice},
-        renderer::damage::OutputDamageTracker,
-        session::{libseat::LibSeatSession, Session},
+        renderer::{
+            damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
+            element::{RenderElement, RenderElementStates},
+            Bind, ExportMem, Offscreen, Renderer,
+        },
+        session::Session,
+        SwapBuffersError,
     },
     desktop::utils::OutputPresentationFeedback,
     output::{Mode as WlMode, Output, PhysicalProperties},
     reexports::{
         calloop::RegistrationToken,
         drm::{
-            control::{
-                connector::{self, Handle as ConnectorHandle, State},
-                crtc::Handle as CrtcHandle,
-                ModeTypeFlags,
-            },
+            control::{connector, crtc::Handle as CrtcHandle, ModeTypeFlags},
             Device,
         },
-        gbm::BufferObjectFlags,
-        nix::{fcntl::OFlag, sys::stat::dev_t},
+        nix::fcntl::OFlag,
         wayland_server::{backend::GlobalId, DisplayHandle},
     },
     utils::DeviceFd,
@@ -81,6 +84,119 @@ pub struct BackendData {
     surfaces: HashMap<CrtcHandle, SurfaceData>,
     gbm: GbmDevice<DrmDeviceFd>,
     drm: DrmDevice,
+}
+
+impl SurfaceComposition {
+    pub fn format(&self) -> smithay::reexports::gbm::Format {
+        match self {
+            SurfaceComposition::Compositor(compositor) => compositor.format(),
+            Self::Surface {
+                surface,
+                damage_tracker: _,
+            } => surface.format(),
+        }
+    }
+
+    pub fn frame_submitted(
+        &mut self,
+    ) -> Result<Option<Option<OutputPresentationFeedback>>, SwapBuffersError> {
+        match self {
+            SurfaceComposition::Compositor(compositor) => compositor
+                .frame_submitted()
+                .map_err(Into::<SwapBuffersError>::into),
+
+            Self::Surface { surface, .. } => surface
+                .frame_submitted()
+                .map_err(Into::<SwapBuffersError>::into),
+        }
+    }
+    pub fn surface(&self) -> &DrmSurface {
+        match self {
+            SurfaceComposition::Compositor(compositor) => compositor.surface(),
+            Self::Surface {
+                surface,
+                damage_tracker: _,
+            } => surface.surface(),
+        }
+    }
+
+    pub fn reset_buffers(&mut self) {
+        match self {
+            SurfaceComposition::Compositor(comp) => {
+                comp.reset_buffers();
+            }
+            Self::Surface { surface, .. } => {
+                surface.reset_buffers();
+            }
+        }
+    }
+
+    pub fn queue_frame(
+        &mut self,
+        user_data: Option<OutputPresentationFeedback>,
+    ) -> Result<(), SwapBuffersError> {
+        match self {
+            SurfaceComposition::Compositor(comp) => comp
+                .queue_frame(user_data)
+                .map_err(Into::<SwapBuffersError>::into),
+            Self::Surface { surface, .. } => surface
+                .queue_buffer(None, user_data)
+                .map_err(Into::<SwapBuffersError>::into),
+        }
+    }
+
+    // hell
+    fn render_frame<'a, R, E, Target>(
+        &'a mut self,
+        renderer: &mut R,
+        elements: &'a [E],
+        clear_color: [f32; 4],
+    ) -> Result<(bool, RenderElementStates), SwapBuffersError>
+    where
+        R: Renderer + Bind<Dmabuf> + Bind<Target> + Offscreen<Target> + ExportMem,
+        <R as Renderer>::TextureId: 'static,
+        <R as Renderer>::Error: Into<SwapBuffersError>,
+        E: RenderElement<R>,
+    {
+        match self {
+            SurfaceComposition::Surface {
+                surface,
+                damage_tracker,
+            } => {
+                let (dmabuf, age) = surface
+                    .next_buffer()
+                    .map_err(Into::<SwapBuffersError>::into)?;
+                renderer
+                    .bind(dmabuf)
+                    .expect("Unable to bind dmabuf to renderer");
+                let res = damage_tracker
+                    .render_output(renderer, age.into(), elements, clear_color)
+                    .map(|(damage, states)| (damage.is_some(), states))
+                    .map_err(|err| match err {
+                        OutputDamageTrackerError::Rendering(err) => err.into(),
+                        _ => unreachable!(),
+                    });
+                res
+            }
+            SurfaceComposition::Compositor(comp) => comp
+                .render_frame(renderer, elements, clear_color)
+                .map(|render_frame_result| {
+                    (
+                        render_frame_result.damage.is_some(),
+                        render_frame_result.states,
+                    )
+                })
+                .map_err(|err| match err {
+                    smithay::backend::drm::compositor::RenderFrameError::PrepareFrame(err) => {
+                        err.into()
+                    }
+                    smithay::backend::drm::compositor::RenderFrameError::RenderFrame(
+                        OutputDamageTrackerError::Rendering(err),
+                    ) => err.into(),
+                    _ => unreachable!(),
+                }),
+        }
+    }
 }
 
 impl Corrosion<UdevData> {
@@ -155,7 +271,7 @@ impl Corrosion<UdevData> {
             return;
         };
 
-        let mut renderer = self
+        let renderer = self
             .backend_data
             .gpu_manager
             .single_renderer(&device.render_node)
@@ -281,6 +397,7 @@ impl Corrosion<UdevData> {
                     .contains("nvidia")
             {
                 // Nvidia, frik you >:(
+                // (Overlay planes on nvidia gpus break)
                 planes.overlay = vec![];
             }
 
