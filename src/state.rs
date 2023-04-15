@@ -16,7 +16,7 @@ use smithay::{
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
-            Display,
+            Display, DisplayHandle,
         },
     },
     utils::{Logical, Point},
@@ -33,6 +33,7 @@ use smithay::{
 use crate::CalloopData;
 
 pub struct Corrosion<BackendData: Backend + 'static> {
+    pub display_handle: DisplayHandle,
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
     pub backend_data: BackendData,
@@ -94,6 +95,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
         // Return the state
         Self {
+            display_handle: dh,
             start_time,
 
             space,

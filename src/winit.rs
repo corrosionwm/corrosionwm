@@ -3,8 +3,8 @@ use std::time::Duration;
 use smithay::{
     backend::{
         renderer::{
-            damage::DamageTrackedRenderer, element::surface::WaylandSurfaceRenderElement,
-            gles2::Gles2Renderer,
+            damage::OutputDamageTracker, element::surface::WaylandSurfaceRenderElement,
+            gles::GlesRenderer,
         },
         winit::{self, WinitError, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
     },
@@ -78,7 +78,7 @@ pub fn init_winit<BackendData: Backend + 'static>() -> Result<(), Box<dyn std::e
 
     state.space.map_output(&output, (0, 0));
 
-    let mut damage_tracked_renderer = DamageTrackedRenderer::from_output(&output);
+    let mut damage_tracked_renderer = OutputDamageTracker::from_output(&output);
 
     // Set the environment variable WAYLAND_DISPLAY to the socket name of the display.
     std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
@@ -87,10 +87,7 @@ pub fn init_winit<BackendData: Backend + 'static>() -> Result<(), Box<dyn std::e
 
     // This code creates a timer that will be used to redraw the window.
     let timer = Timer::immediate();
-    let mut data = CalloopData {
-        state,
-        display: display,
-    };
+    let mut data = CalloopData { state, display };
     event_loop
         .handle()
         .insert_source(timer, move |_, _, data| {
@@ -114,11 +111,11 @@ pub fn init_winit<BackendData: Backend + 'static>() -> Result<(), Box<dyn std::e
 }
 
 pub fn winit_dispatch<BackendData: Backend>(
-    backend: &mut WinitGraphicsBackend<Gles2Renderer>,
+    backend: &mut WinitGraphicsBackend<GlesRenderer>,
     winit: &mut WinitEventLoop,
     data: &mut CalloopData<BackendData>,
     output: &Output,
-    damage_tracked_renderer: &mut DamageTrackedRenderer,
+    damage_tracked_renderer: &mut OutputDamageTracker,
     full_redraw: &mut u8,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // This code dispatches new events, and if the window is closed, it stops the loop.
@@ -167,7 +164,7 @@ pub fn winit_dispatch<BackendData: Backend>(
 
     // This code renders the output, submits the frame, and refreshes the space.
     backend.bind()?;
-    smithay::desktop::space::render_output::<_, WaylandSurfaceRenderElement<Gles2Renderer>, _, _>(
+    smithay::desktop::space::render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
         output,
         backend.renderer(),
         0,

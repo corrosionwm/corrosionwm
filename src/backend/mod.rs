@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use smithay::{
     backend::{
         allocator::{
@@ -7,7 +9,7 @@ use smithay::{
         },
         drm::{DrmNode, NodeType},
         renderer::{
-            gles2::Gles2Renderer,
+            gles::GlesRenderer,
             multigpu::{
                 gbm::{GbmGlesBackend, GbmGlesDevice},
                 GpuManager,
@@ -23,16 +25,18 @@ use smithay::{
     },
 };
 
+use self::drm::BackendData;
 use crate::{state::Backend, CalloopData, Corrosion};
 
-mod gbm;
+mod drm;
 
 struct UdevData {
     pub loop_signal: LoopSignal,
     pub session: LibSeatSession,
     primary_gpu: DrmNode,
     allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
-    gpu_manager: GpuManager<GbmGlesBackend<Gles2Renderer>>,
+    gpu_manager: GpuManager<GbmGlesBackend<GlesRenderer>>,
+    backends: HashMap<DrmNode, BackendData>,
 }
 
 impl Backend for UdevData {
@@ -60,7 +64,7 @@ impl Backend for UdevData {
 }
 
 pub fn initialize_backend() {
-    let event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
+    let mut event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
     let (mut session, mut notifier) = match LibSeatSession::new() {
         Ok((session, notifier)) => (session, notifier),
         Err(err) => {
@@ -98,6 +102,7 @@ pub fn initialize_backend() {
         primary_gpu,
         allocator: None,
         gpu_manager: gpus,
+        backends: HashMap::new(),
     };
     let mut state = Corrosion::new(event_loop.handle(), &mut display, data);
     let backend = match UdevBackend::new(&state.seat_name) {
@@ -109,14 +114,19 @@ pub fn initialize_backend() {
     };
 
     for (dev, path) in backend.device_list() {
-        gbm::run_gbm(&mut state.backend_data.session, dev, path);
+        state.device_added(DrmNode::from_dev_id(dev).unwrap(), &path);
     }
 
     event_loop
         .handle()
         .insert_source(backend, move |event, _, data| match event {
             udev::UdevEvent::Added { device_id, path } => {
-                tracing::info!("Device id: {:?} added with path {:?}", device_id, path);
+                data.state
+                    .device_added(DrmNode::from_dev_id(device_id).unwrap(), &path);
+            }
+            udev::UdevEvent::Changed { device_id } => {
+                data.state
+                    .device_changed(DrmNode::from_dev_id(device_id).unwrap());
             }
             _ => (),
         })
