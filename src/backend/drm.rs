@@ -461,6 +461,34 @@ impl Corrosion<UdevData> {
         }
     }
 
+    pub fn device_removed(&mut self, node: DrmNode) {
+        let device = if let Some(device) = self.backend_data.backends.get(&node) {
+            device
+        } else {
+            return;
+        };
+
+        let crtcs: Vec<_> = device
+            .scanner
+            .crtcs()
+            .map(|(info, crtc)| (info.clone(), crtc))
+            .collect();
+
+        for (connector, crtc) in crtcs {
+            self.connector_disconnected(node, connector, crtc);
+        }
+
+        tracing::info!("Removed surfaces");
+
+        if let Some(backend_data) = self.backend_data.backends.remove(&node) {
+            self.backend_data.gpu_manager.as_mut().remove_node(&node);
+
+            self.handle.remove(backend_data.token);
+
+            tracing::debug!("Dropped device");
+        }
+    }
+
     pub fn connector_disconnected(
         &mut self,
         node: DrmNode,
