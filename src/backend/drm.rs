@@ -18,13 +18,17 @@ use smithay::{
     output::{Mode as WlMode, Output, PhysicalProperties},
     reexports::{
         calloop::RegistrationToken,
-        drm::control::{
-            connector::{self, Handle as ConnectorHandle, State},
-            crtc::Handle as CrtcHandle,
-            ModeTypeFlags,
+        drm::{
+            control::{
+                connector::{self, Handle as ConnectorHandle, State},
+                crtc::Handle as CrtcHandle,
+                ModeTypeFlags,
+            },
+            Device,
         },
         gbm::BufferObjectFlags,
         nix::{fcntl::OFlag, sys::stat::dev_t},
+        wayland_server::{backend::GlobalId, DisplayHandle},
     },
     utils::DeviceFd,
 };
@@ -63,7 +67,11 @@ enum SurfaceComposition {
 }
 
 pub struct SurfaceData {
+    dh: DisplayHandle,
     compositor: SurfaceComposition,
+    id: Option<GlobalId>,
+    render_node: DrmNode,
+    device_node: DrmNode,
 }
 
 pub struct BackendData {
@@ -245,8 +253,67 @@ impl Corrosion<UdevData> {
                 damage_tracker: OutputDamageTracker::from_output(&output),
             }
         } else {
-            todo!()
+            let drivers = match device.drm.get_driver() {
+                Ok(driver) => driver,
+                Err(err) => {
+                    tracing::error!("Unable to get device driver: {}", err);
+                    return;
+                }
+            };
+
+            let mut planes = match surface.planes() {
+                Ok(planes) => planes,
+                Err(err) => {
+                    tracing::error!("Unable to get surface planes: {}", err);
+                    return;
+                }
+            };
+
+            if drivers
+                .name()
+                .to_string_lossy()
+                .to_lowercase()
+                .contains("nvidia")
+                || drivers
+                    .description()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .contains("nvidia")
+            {
+                // Nvidia, frik you >:(
+                planes.overlay = vec![];
+            }
+
+            let compositor = match DrmCompositor::new(
+                &output,
+                surface,
+                Some(planes),
+                allocator,
+                device.gbm.clone(),
+                SUPPORTED_FORMATS,
+                render_formats,
+                device.drm.cursor_size(),
+                Some(device.gbm.clone()),
+            ) {
+                Ok(compositor) => compositor,
+                Err(err) => {
+                    tracing::error!("Error creating hardware-accelerated compositor: {}", err);
+                    return;
+                }
+            };
+            SurfaceComposition::Compositor(compositor)
         };
+
+        device.surfaces.insert(
+            crtc,
+            SurfaceData {
+                dh: self.display_handle.clone(),
+                compositor,
+                id: Some(global),
+                render_node: device.render_node,
+                device_node: node,
+            },
+        );
     }
 
     // Gets called when the device changes
@@ -266,11 +333,50 @@ impl Corrosion<UdevData> {
                 } => {
                     self.connector_connected(node, crtc, connector);
                 }
-                Disconnected => {
-                    todo!();
+                Disconnected {
+                    connector,
+                    crtc: Some(crtc),
+                } => {
+                    self.connector_disconnected(node, connector, crtc);
                 }
                 _ => (),
             };
+        }
+    }
+
+    pub fn connector_disconnected(
+        &mut self,
+        node: DrmNode,
+        connector: connector::Info,
+        crtc: CrtcHandle,
+    ) {
+        let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
+            device
+        } else {
+            return;
+        };
+
+        tracing::info!(
+            "Connector {:?}-{} Disconnected",
+            connector.interface(),
+            connector.interface_id()
+        );
+
+        device.surfaces.remove(&crtc);
+
+        let output = self
+            .space
+            .outputs()
+            .find(|output| {
+                output
+                    .user_data()
+                    .get::<UdevOutputId>()
+                    .map(|id| id.device_id == node && id.crtc == crtc)
+                    .unwrap_or(false)
+            })
+            .cloned();
+        if let Some(output) = output {
+            self.space.unmap_output(&output);
         }
     }
 }
