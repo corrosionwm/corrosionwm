@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+# find a cargo.toml file in the current directory, if it does not exist error out
+echo "=========================="
+echo "corrosionWM nightly script"
+echo "=========================="
+echo
+
+if [ ! -f Cargo.toml ]; then
+    echo "No Cargo.toml file found in current directory"
+    exit 1
+fi
+
+MAKEFLAGS="-j$(nproc)"
+
+# run cargo build --release
+cargo build --release
+
+# package the binary into a .zip
+# corrosionwm-$(date +%Y-%m-%d).zip
+zip corrosionwm-$(date +%Y-%m-%d).zip target/release/corrosionwm
+
+# make a message containing the following:
+# ```diff
+# get the last commit message
+# ```
+MESSAGE="
+\`\`\`diff
+$(git diff --stat HEAD^ HEAD)
+\`\`\`
+
+Nightly build executed on \`$(date +%Y-%m-%d)\` by \`$(whoami)\`"
+
+USERNAME="corrosionwm nightly build"
+PROFILE_PICTURE="https://raw.githubusercontent.com/corrosionwm/corrosionwm/main/corrosionwm.png"
+
+# upload the zip to https://discord.com/api/webhooks/1082714425670242394/HcVY8bABlCxKcBJCXu9-ry55frPD4TEBuQ8Od_LCSLKiaPcB-Tm3XlDhaUNXiw1j97fB
+# use $USERNAME as the username and $PROFILE_PICTURE as the profile picture
+# use $MESSAGE as the message
+curl -H "Content-Type: multipart/form-data" -F "file=@corrosionwm-$(date +%Y-%m-%d).zip" -F "username=$USERNAME" -F "avatar_url=$PROFILE_PICTURE" -F "content=$MESSAGE" https://discord.com/api/webhooks/1082714425670242394/HcVY8bABlCxKcBJCXu9-ry55frPD4TEBuQ8Od_LCSLKiaPcB-Tm3XlDhaUNXiw1j97fB
+
+# clean up the zip
+rm corrosionwm-$(date +%Y-%m-%d).zip
