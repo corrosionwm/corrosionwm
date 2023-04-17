@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let corrosion_config = CorrosionConfig::new();
     let defaults = corrosion_config.get_defaults();
 
-    let backend = match env::var("CORROSION_BACKEND") {
+    let backend = match env::var("CORROSIONWM_BACKEND") {
         Ok(ret) => ret,
         Err(_) => String::from("udev"),
     };
