@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # find a cargo.toml file in the current directory, if it does not exist error out
 echo "========================="
 echo "corrosionWM format script"
