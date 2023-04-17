@@ -38,10 +38,10 @@ Nightly build executed on \`$(date +%Y-%m-%d)\` by \`$(whoami)\`"
 USERNAME="corrosionwm nightly build"
 PROFILE_PICTURE="https://raw.githubusercontent.com/corrosionwm/corrosionwm/main/corrosionwm.png"
 
-# upload the zip to https://discord.com/api/webhooks/1082714425670242394/HcVY8bABlCxKcBJCXu9-ry55frPD4TEBuQ8Od_LCSLKiaPcB-Tm3XlDhaUNXiw1j97fB
+# upload the zip to $DISCORD_WEBHOOK_URL
 # use $USERNAME as the username and $PROFILE_PICTURE as the profile picture
 # use $MESSAGE as the message
-curl -H "Content-Type: multipart/form-data" -F "file=@corrosionwm-$(date +%Y-%m-%d).zip" -F "username=$USERNAME" -F "avatar_url=$PROFILE_PICTURE" -F "content=$MESSAGE" https://discord.com/api/webhooks/1082714425670242394/HcVY8bABlCxKcBJCXu9-ry55frPD4TEBuQ8Od_LCSLKiaPcB-Tm3XlDhaUNXiw1j97fB
+curl -H "Content-Type: multipart/form-data" -F "file=@corrosionwm-$(date +%Y-%m-%d).zip" -F "username=$USERNAME" -F "avatar_url=$PROFILE_PICTURE" -F "content=$MESSAGE" $DISCORD_WEBHOOK_URL
 
 # clean up the zip
 rm corrosionwm-$(date +%Y-%m-%d).zip
