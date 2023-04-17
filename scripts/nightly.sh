@@ -26,6 +26,10 @@ zip corrosionwm-$(date +%Y-%m-%d).zip target/release/corrosionwm
 # ```
 MESSAGE="
 \`\`\`diff
+Commit: $(git log -1 --pretty=%B)
+Branch: $(git branch --show-current)
+====================
+
 $(git diff --stat HEAD^ HEAD)
 \`\`\`
 
