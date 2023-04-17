@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 # find a cargo.toml file in the current directory, if it does not exist error out
 echo "=========================="
@@ -12,6 +12,8 @@ if [ ! -f Cargo.toml ]; then
 fi
 
 MAKEFLAGS="-j$(nproc)"
+echo "Setting up devenv..."
+source .dev.env
 
 # run cargo build --release
 cargo build --release

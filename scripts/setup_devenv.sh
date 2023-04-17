@@ -1,3 +1,3 @@
-#!/usr/bin/env bash
+#!/bin/bash
 source .dev.env
 echo "Done!"
