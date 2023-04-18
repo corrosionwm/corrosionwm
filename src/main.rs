@@ -5,6 +5,7 @@ mod handlers;
 
 mod backend;
 mod config;
+mod drawing;
 mod grabs;
 mod input;
 mod state;
@@ -18,7 +19,6 @@ use state::Backend;
 pub use state::Corrosion;
 use std::env;
 use std::process::Command;
-use tracing::debug;
 use which;
 
 pub struct CalloopData<BackendData: Backend + 'static> {

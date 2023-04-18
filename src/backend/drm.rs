@@ -110,6 +110,7 @@ impl SurfaceComposition {
                 .map_err(Into::<SwapBuffersError>::into),
         }
     }
+
     pub fn surface(&self) -> &DrmSurface {
         match self {
             SurfaceComposition::Compositor(compositor) => compositor.surface(),
