@@ -1,25 +1,36 @@
 #!/bin/bash
-# find a cargo.toml file in the current directory, if it does not exist error out
-echo "========================"
-echo "corrosionWM build script"
-echo "========================"
-
-if [ ! -f Cargo.toml ]; then
-    echo "No Cargo.toml file found in current directory"
+# check if gum is installed
+if ! command -v gum &> /dev/null
+then
+    echo "gum could not be found, please install it"
     exit 1
 fi
 
-MAKEFLAGS="-j$(nproc)"
+TEMPLATE="$(gum choose "build (release)" "run (release)" "build (debug)" "run (debug)" "custom")"
 
-# run cargo build --release
-cargo build --release
+# match the template
+FLAGS=""
+case $TEMPLATE in
+    "build (release)")
+        FLAGS="build --release"
+        ;;
+    "run (release)")
+        FLAGS="run --release"
+        ;;
+    "build (debug)")
+        FLAGS="build"
+        ;;
+    "run (debug)")
+        FLAGS="run"
+        ;;
+    "custom")
+        FLAGS="$(gum input --placeholder "Put the flags here (e.g. build --release)")"
+        ;;
+esac
 
-# ask if they want to run cargo install
-read -p "Do you want to run cargo install? [y/N] " -n 1 -r
+# ask for confirmation
+gum confirm "Run cargo $FLAGS?" || exit 1
 
-if [[ $REPLY =~ ^[Yy]$ ]]
-then
-    cargo install --path .
-fi
+gum spin --spinner minidot --title "Running cargo $FLAGS (This may take a while!)" -- cargo $FLAGS
 
-echo "Done!"
+gum format -- "# Done!"
