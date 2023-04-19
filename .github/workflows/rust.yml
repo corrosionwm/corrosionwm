@@ -10,6 +10,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+  MAKEFLAGS: -j2
 
 jobs:
   rust_linux:
@@ -26,8 +27,6 @@ jobs:
     - name: Install Dependences and Configure
       run: |
         sudo apt update && sudo apt install libudev-dev libdbus-1-dev pkg-config libsystemd-dev libwayland-dev libseat-dev xcb libinput-dev libxkbcommon-dev libglvnd-dev
-        export MAKEFLAGS="-j$(nproc)"
-        echo "Set MAKEFLAGS to $(nproc) threads"
     - name: Build
       run: cargo build --verbose --release
     - name: Lint
