@@ -8,8 +8,6 @@
     <img src="https://img.shields.io/github/license/corrosionwm/corrosionwm?style=for-the-badge"/>
     <img src="https://img.shields.io/github/issues/corrosionwm/corrosionwm?style=for-the-badge"/>
   </p>
-  
-![workflow badge](https://github.com/corrosionwm/corrosionwm/actions/workflows/rust.yml/badge.svg)
 
 ## About
 
