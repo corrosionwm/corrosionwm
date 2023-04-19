@@ -9,36 +9,18 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
 jobs:
   rust_linux:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            rust: stable
-
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            rust: beta
-
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            rust: nightly
+    runs-on: ubuntu-latest
     steps:
-    - name: Information
-      run: |
-        echo "OS: ${{ matrix.os }}"
-        echo "Rust: ${{ matrix.rust }}"
-        echo "Target: ${{ matrix.target }}"
     - uses: actions/checkout@v2
     - name: Install rust toolchain
       uses: actions-rs/toolchain@v1
       with:
-          toolchain: ${{ matrix.rust }}
-          target: ${{ matrix.target }}
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
           override: true
           components: rustfmt, clippy
     - name: Install Dependences and Configure
@@ -54,7 +36,17 @@ jobs:
       uses: actions/upload-artifact@v3.1.2
       with:
         # Artifact name
-        name: build-artifact-rust-${{ matrix.rust }}
+        name: build-artifact
         # A file, directory or wildcard pattern that describes what to upload
         path: ./target/release/corrosionwm
         # The desired behavior if no files are found using the provided path.
+    - name: Discord notification
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      uses: Ilshidur/action-discord@master
+      with:
+        # result will be:
+        #   Successfully built `<commit name>` on `<branch name>`
+        # and attach the build artifact
+        args: Successfully built ${{ github.sha }} on ${{ github.ref }}, download the build artifact at ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+
