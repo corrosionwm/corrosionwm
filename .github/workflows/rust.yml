@@ -47,5 +47,5 @@ jobs:
         # result will be:
         #   Successfully built `<commit name>` on `<branch name>`
         # and attach the build artifact
-        args: Successfully built ${{ github.sha }} on ${{ github.ref }}, download the build artifact at ${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+        args: Successfully built `${{ github.event_name }}` on `${{ github.ref }}`, download the build artifact at <${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}>
 
