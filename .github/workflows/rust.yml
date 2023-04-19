@@ -47,5 +47,6 @@ jobs:
         # result will be:
         #   Successfully built `<commit name>` on `<branch name>`
         # and attach the build artifact
-        args: Successfully built `${{ github.event_name }}` on `${{ github.ref }}`, download the build artifact at <${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}>
+        # TODO: THIS ONLY WORKS ON PUSH, NOT PR
+        args: Successfully built commit `${{ github.event.head_commit.message }}` on `${{ github.ref_name }}`, download the build artifact at <${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}>
 
