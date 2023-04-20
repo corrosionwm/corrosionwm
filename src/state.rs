@@ -16,10 +16,10 @@ use smithay::{
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
-            Display,
+            Display, DisplayHandle,
         },
     },
-    utils::{Logical, Point},
+    utils::{Clock, Logical, Monotonic, Point},
     wayland::{
         compositor::CompositorState,
         data_device::DataDeviceState,
@@ -33,6 +33,7 @@ use smithay::{
 use crate::CalloopData;
 
 pub struct Corrosion<BackendData: Backend + 'static> {
+    pub display_handle: DisplayHandle,
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
     pub backend_data: BackendData,
@@ -51,6 +52,7 @@ pub struct Corrosion<BackendData: Backend + 'static> {
 
     pub seat: Seat<Self>,
     pub seat_name: String,
+    pub clock: Clock<Monotonic>,
 }
 
 impl<BackendData: Backend + 'static> Corrosion<BackendData> {
@@ -59,6 +61,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         display: &mut Display<Self>,
         backend_data: BackendData,
     ) -> Self {
+        let clock = Clock::new().expect("Unable to make clock");
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
@@ -94,6 +97,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
         // Return the state
         Self {
+            display_handle: dh,
             start_time,
 
             space,
@@ -111,6 +115,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
             seat_state,
             data_device_state,
             seat,
+            clock,
         }
     }
 

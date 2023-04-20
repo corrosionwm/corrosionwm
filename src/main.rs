@@ -5,6 +5,7 @@ mod handlers;
 
 mod backend;
 mod config;
+mod drawing;
 mod grabs;
 mod input;
 mod state;
@@ -18,7 +19,6 @@ use state::Backend;
 pub use state::Corrosion;
 use std::env;
 use std::process::Command;
-use tracing::debug;
 use which;
 
 pub struct CalloopData<BackendData: Backend + 'static> {
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // if using nvidia, error out
     if let Ok(nvidia) = std::fs::read_to_string("/proc/driver/nvidia/version") {
         if nvidia.contains("NVIDIA") {
-            tracing::error!("Currently as corrosionWM does not support EGL, it cannot be used with the NVIDIA driver. Please use the nouveau driver instead.");
+            tracing::warn!("CorrosionWM does not currently support EGL, so older proprietary nvidia drivers may not work with this compositor. It is advised to use the Nouveau drivers if you have an older nvidia card.");
         }
     }
 
@@ -61,7 +61,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(ret) => ret,
         Err(_) => String::from("udev"),
     };
-    debug!("Udev backend initialized successfully!");
 
     let mut args = std::env::args().skip(1);
     let flag = args.next();
