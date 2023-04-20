@@ -8,6 +8,91 @@ use std::process::Command;
 //nya
 //the above comment is a secret compiler option that directly tells ferris to make the code blazingly fast
 
+// tests 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keybind() {
+        let keybind: Keybind = "M-x | kitty".into();
+        assert_eq!(keybind.keys, vec!["x"]);
+        assert_eq!(keybind.command, "kitty");
+        assert_eq!(keybind.special_key, Some(SpecialKey::ModKey));
+    }
+
+    #[test]
+    fn test_multi_keybind() {
+        let keybind: Keybind = "M-x-y | kitty".into();
+        assert_eq!(keybind.keys, vec!["x", "y"]);
+        assert_eq!(keybind.command, "kitty");
+        assert_eq!(keybind.special_key, Some(SpecialKey::ModKey));
+    }
+
+    #[test]
+    fn test_special_key_detection() {
+        let keybind: Keybind = "M-x | kitty".into();
+        assert_eq!(keybind.special_key, Some(SpecialKey::ModKey));
+        let keybind: Keybind = "S-x | kitty".into();
+        assert_eq!(keybind.special_key, Some(SpecialKey::ShiftKey));
+        let keybind: Keybind = "C-x | kitty".into();
+        assert_eq!(keybind.special_key, Some(SpecialKey::ControlKey));
+        let keybind: Keybind = "A-x | kitty".into();
+        assert_eq!(keybind.special_key, Some(SpecialKey::AltKey));
+    }
+}
+
+// keybind struct
+#[derive(Debug, PartialEq)]
+pub struct Keybind {
+    pub special_key: Option<SpecialKey>,
+    pub keys: Vec<String>,
+    pub command: String,
+}
+
+// TODO: allow multiple special keys
+#[derive(Debug, PartialEq)]
+pub enum SpecialKey {
+    ModKey,
+    ShiftKey,
+    ControlKey,
+    AltKey,
+}
+
+// implementation for keybind struct
+// this will allow converting emacs keybindings into that struct
+// an example is "M-x | kitty"
+// M = Mod4
+// - is the seperator between keys
+// x = x
+// | will be the seperator between the key and the command
+// kitty will be the command
+impl From<&str> for Keybind {
+    fn from(keybind: &str) -> Self {
+        let mut keybind = keybind.split(" | ");
+        let keys = keybind.next().unwrap();
+        let command = keybind.next().unwrap();
+
+        let mut keys = keys.split("-");
+        let special_key = keys.next().unwrap();
+        let keys: Vec<String> = keys.map(|x| x.to_string()).collect();
+
+        let special_key = match special_key {
+            "M" => Some(SpecialKey::ModKey),
+            "S" => Some(SpecialKey::ShiftKey),
+            "C" => Some(SpecialKey::ControlKey),
+            "A" => Some(SpecialKey::AltKey),
+            _ => None,
+        };
+
+        Keybind {
+            special_key,
+            keys,
+            command: command.to_string(),
+        }
+    }
+}
+
 //The default configuration
 const DEFAULT_CONFIG: &str = r#"# This is the default corrosionwm config
 [defaults]
