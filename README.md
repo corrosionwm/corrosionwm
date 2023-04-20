@@ -8,8 +8,6 @@
     <img src="https://img.shields.io/github/license/corrosionwm/corrosionwm?style=for-the-badge"/>
     <img src="https://img.shields.io/github/issues/corrosionwm/corrosionwm?style=for-the-badge"/>
   </p>
-  
-![workflow badge](https://github.com/corrosionwm/corrosionwm/actions/workflows/rust.yml/badge.svg)
 
 ## About
 
@@ -30,10 +28,6 @@ We also have a [Matrix](https://matrix.to/#/#corrosionwm:matrix.org)!
 ## Contributing
 
 **NOTE:** A more structured guide will be written soon!
-
-> **NOTE:** This project is still in its early stages, so there is a lot of work to be done!
-> Currently most work is being done in the `drm` branch, as we need to implement a DRM backend.
-> You will need to run this from a TTY, if you want to use winit then change the `CORROSIONWM_BACKEND` environment variable to `winit`.
 
 To contribute your own code, start by forking this project and installing the necessary dependencies listed below.
 
