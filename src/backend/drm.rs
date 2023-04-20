@@ -1,7 +1,7 @@
-use std::{collections::HashMap, os::fd::FromRawFd};
+use std::{collections::HashMap, os::fd::FromRawFd, time::Duration};
 
 use super::UdevData;
-use crate::Corrosion;
+use crate::{CalloopData, Corrosion};
 use smithay::{
     backend::{
         allocator::{
@@ -10,27 +10,34 @@ use smithay::{
             Fourcc,
         },
         drm::{
-            compositor::DrmCompositor, DrmDevice, DrmDeviceFd, DrmNode, DrmSurface,
-            GbmBufferedSurface,
+            compositor::DrmCompositor, DrmDevice, DrmDeviceFd, DrmError, DrmEventMetadata, DrmNode,
+            DrmSurface, GbmBufferedSurface,
         },
         egl::{display::EGLDisplay, EGLDevice},
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::{RenderElement, RenderElementStates},
+            element::{surface::WaylandSurfaceRenderElement, RenderElement, RenderElementStates},
+            gles::{GlesRenderer, GlesTexture},
+            multigpu::{gbm::GbmGlesBackend, MultiRenderer},
             Bind, ExportMem, Offscreen, Renderer,
         },
         session::Session,
         SwapBuffersError,
     },
-    desktop::utils::OutputPresentationFeedback,
+    desktop::{
+        space::{self, SpaceRenderElements},
+        utils::OutputPresentationFeedback,
+    },
     output::{Mode as WlMode, Output, PhysicalProperties},
     reexports::{
-        calloop::RegistrationToken,
+        calloop::{timer::Timer, RegistrationToken},
         drm::{
+            self,
             control::{connector, crtc::Handle as CrtcHandle, ModeTypeFlags},
             Device,
         },
         nix::fcntl::OFlag,
+        wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
         wayland_server::{backend::GlobalId, DisplayHandle},
     },
     utils::DeviceFd,
@@ -56,6 +63,7 @@ type HardwareCompositor = DrmCompositor<
     DrmDeviceFd,
 >;
 
+#[derive(PartialEq)]
 struct UdevOutputId {
     crtc: CrtcHandle,
     device_id: DrmNode,
@@ -69,10 +77,13 @@ enum SurfaceComposition {
     Compositor(HardwareCompositor),
 }
 
+type UdevRenderer<'a, 'b> =
+    MultiRenderer<'a, 'a, 'b, GbmGlesBackend<GlesRenderer>, GbmGlesBackend<GlesRenderer>>;
+
 pub struct SurfaceData {
-    dh: DisplayHandle,
+    _dh: DisplayHandle,
     compositor: SurfaceComposition,
-    id: Option<GlobalId>,
+    _id: Option<GlobalId>,
     render_node: DrmNode,
     device_node: DrmNode,
 }
@@ -111,7 +122,7 @@ impl SurfaceComposition {
         }
     }
 
-    pub fn surface(&self) -> &DrmSurface {
+    pub fn _surface(&self) -> &DrmSurface {
         match self {
             SurfaceComposition::Compositor(compositor) => compositor.surface(),
             Self::Surface {
@@ -221,14 +232,17 @@ impl Corrosion<UdevData> {
         // Insert the device's event source into the event loop
         let registration_token = self
             .handle
-            .insert_source(notifier, |event, _, _| match event {
-                smithay::backend::drm::DrmEvent::VBlank(_crtc) => {
-                    tracing::info!("VBlank event occurred");
-                }
-                smithay::backend::drm::DrmEvent::Error(err) => {
-                    tracing::error!("{}", err);
-                }
-            })
+            .insert_source(
+                notifier,
+                move |event, meta, data: &mut CalloopData<_>| match event {
+                    smithay::backend::drm::DrmEvent::VBlank(crtc) => {
+                        data.state.frame_finish(node, crtc, meta)
+                    }
+                    smithay::backend::drm::DrmEvent::Error(err) => {
+                        tracing::error!("{}", err);
+                    }
+                },
+            )
             .expect("Unable to create registration token for drm event source");
 
         // Create a new EGL display with our gbm device and use it to find the render node
@@ -425,13 +439,15 @@ impl Corrosion<UdevData> {
         device.surfaces.insert(
             crtc,
             SurfaceData {
-                dh: self.display_handle.clone(),
+                _dh: self.display_handle.clone(),
                 compositor,
-                id: Some(global),
+                _id: Some(global),
                 render_node: device.render_node,
                 device_node: node,
             },
         );
+
+        self.schedule_initial_render(node, crtc);
     }
 
     // Gets called when the device changes
@@ -490,6 +506,135 @@ impl Corrosion<UdevData> {
         }
     }
 
+    pub fn frame_finish(
+        &mut self,
+        node: DrmNode,
+        crtc: CrtcHandle,
+        meta: &mut Option<DrmEventMetadata>,
+    ) {
+        let device = match self.backend_data.backends.get_mut(&node) {
+            Some(device) => device,
+            None => {
+                tracing::error!("No backend of \"{}\" found", node);
+                return;
+            }
+        };
+
+        let surface = match device.surfaces.get_mut(&crtc) {
+            Some(surface) => surface,
+            None => {
+                tracing::error!("Could not get surface data of crtc: {:?}", crtc);
+                return;
+            }
+        };
+
+        let output = if let Some(output) = self.space.outputs().find(|o| {
+            o.user_data().get::<UdevOutputId>()
+                == Some(&UdevOutputId {
+                    device_id: surface.device_node,
+                    crtc,
+                })
+        }) {
+            output.clone()
+        } else {
+            return;
+        };
+
+        let schedule_render = match surface
+            .compositor
+            .frame_submitted()
+            .map_err(Into::<SwapBuffersError>::into)
+        {
+            Ok(user_data) => {
+                if let Some(mut feedback) = user_data.flatten() {
+                    let tp = meta.as_ref().and_then(|metadata| match metadata.time {
+                        smithay::backend::drm::DrmEventTime::Monotonic(time) => Some(time),
+                        smithay::backend::drm::DrmEventTime::Realtime(_) => None,
+                    });
+                    let seq = meta.as_ref().map(|metadata| metadata.sequence).unwrap_or(0);
+
+                    let (clock, flags) = if let Some(tp) = tp {
+                        (
+                            tp.into(),
+                            wp_presentation_feedback::Kind::Vsync
+                                | wp_presentation_feedback::Kind::HwClock
+                                | wp_presentation_feedback::Kind::HwCompletion,
+                        )
+                    } else {
+                        (self.clock.now(), wp_presentation_feedback::Kind::Vsync)
+                    };
+
+                    feedback.presented(
+                        clock,
+                        output
+                            .current_mode()
+                            .map(|mode| mode.refresh as u32)
+                            .unwrap_or_default(),
+                        seq as u64,
+                        flags,
+                    );
+                }
+                true
+            }
+            Err(err) => {
+                tracing::error!("Error occurred wile rendering: {}", err);
+                match err {
+                    SwapBuffersError::AlreadySwapped => true,
+                    SwapBuffersError::TemporaryFailure(err)
+                        if matches!(
+                            err.downcast_ref::<DrmError>(),
+                            Some(&DrmError::DeviceInactive)
+                        ) =>
+                    {
+                        false
+                    }
+
+                    SwapBuffersError::TemporaryFailure(err) => matches!(
+                        err.downcast_ref::<DrmError>(),
+                        Some(&DrmError::Access {
+                            source: drm::SystemError::PermissionDenied,
+                            ..
+                        })
+                    ),
+
+                    SwapBuffersError::ContextLost(err) => {
+                        panic!("Rendering loop has been lost: {}", err)
+                    }
+                }
+            }
+        };
+
+        if schedule_render {
+            let output_refresh = match output.current_mode() {
+                Some(mode) => mode.refresh,
+                None => {
+                    return;
+                }
+            };
+
+            let repaint_delay =
+                Duration::from_millis(((1_000_000f32 / output_refresh as f32) * 0.6f32) as u64);
+            let timer = if self.backend_data.primary_gpu != surface.render_node {
+                tracing::info!("Scheduling repaint timer for {:?} immediately", crtc);
+                Timer::immediate()
+            } else {
+                tracing::info!(
+                    "Scheduling repaint timer for {:?} with a delay of {:?}",
+                    crtc,
+                    repaint_delay
+                );
+                Timer::from_duration(repaint_delay)
+            };
+
+            self.handle
+                .insert_source(timer, move |_, _, data| {
+                    data.state.render_surface(node, crtc);
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                })
+                .expect("Unable to insert rendering function into event loop");
+        }
+    }
+
     pub fn connector_disconnected(
         &mut self,
         node: DrmNode,
@@ -525,4 +670,100 @@ impl Corrosion<UdevData> {
             self.space.unmap_output(&output);
         }
     }
+    pub fn render_surface(&mut self, node: DrmNode, crtc: CrtcHandle) {
+        let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
+            device
+        } else {
+            return;
+        };
+
+        let surface = if let Some(surface) = device.surfaces.get_mut(&crtc) {
+            surface
+        } else {
+            return;
+        };
+
+        let render_node = surface.render_node;
+        let primary_gpu = self.backend_data.primary_gpu;
+        let mut renderer = if primary_gpu == render_node {
+            self.backend_data.gpu_manager.single_renderer(&render_node)
+        } else {
+            let format = surface.compositor.format();
+            self.backend_data.gpu_manager.renderer(
+                &primary_gpu,
+                &render_node,
+                self.backend_data
+                    .allocator
+                    .as_mut()
+                    .expect("No allocator found")
+                    .as_mut(),
+                format,
+            )
+        }
+        .unwrap();
+
+        let output = if let Some(output) = self.space.outputs().find(|o| {
+            o.user_data().get()
+                == Some(&UdevOutputId {
+                    crtc,
+                    device_id: surface.device_node,
+                })
+        }) {
+            output.clone()
+        } else {
+            return;
+        };
+
+        let elements: Vec<_> =
+            space::space_render_elements(&mut renderer, [&self.space], &output).unwrap();
+
+        match surface.compositor.render_frame::<_, _, GlesTexture>(
+            &mut renderer,
+            &elements,
+            [1.0f32, 1.0f32, 1.0f32, 1.0f32],
+        ) {
+            Ok(rendered) => match rendered {
+                (true, _) => {}
+                (false, _) => {
+                    self.render_surface(node, crtc);
+                }
+            },
+            Err(err) => {
+                tracing::error!("Error occurred while rendering compositor surface: {}", err);
+                return;
+            }
+        };
+    }
+
+    pub fn schedule_initial_render(&mut self, node: DrmNode, crtc: CrtcHandle) {
+        let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
+            device
+        } else {
+            return;
+        };
+
+        let mut surface = if let Some(surface) = device.surfaces.get_mut(&crtc) {
+            surface
+        } else {
+            return;
+        };
+
+        let node = surface.render_node;
+        let mut renderer = self
+            .backend_data
+            .gpu_manager
+            .single_renderer(&node)
+            .unwrap();
+
+        initial_render(&mut surface, &mut renderer);
+    }
+}
+
+fn initial_render(surface: &mut SurfaceData, renderer: &mut UdevRenderer<'_, '_>) {
+    surface.compositor.render_frame::<_, SpaceRenderElements<
+        UdevRenderer,
+        WaylandSurfaceRenderElement<UdevRenderer>,
+    >, GlesTexture>(renderer, &[], [1.0f32, 1.0f32, 1.0f32, 1.0f32]).expect("Unable to render");
+    surface.compositor.queue_frame(None).unwrap();
+    surface.compositor.reset_buffers();
 }

@@ -7,6 +7,7 @@ use smithay::{
             Allocator,
         },
         drm::{DrmNode, NodeType},
+        libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
             gles::GlesRenderer,
             multigpu::{gbm::GbmGlesBackend, GpuManager},
@@ -17,12 +18,13 @@ use smithay::{
     },
     reexports::{
         calloop::{EventLoop, LoopSignal},
+        input::Libinput,
         wayland_server::{protocol::wl_surface::WlSurface, Display},
     },
 };
 
 use self::drm::BackendData;
-use crate::{state::Backend, Corrosion};
+use crate::{state::Backend, CalloopData, Corrosion};
 
 mod drm;
 
@@ -60,7 +62,7 @@ impl Backend for UdevData {
 }
 
 pub fn initialize_backend() {
-    let event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
+    let mut event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
     let (session, mut _notifier) = match LibSeatSession::new() {
         Ok((session, notifier)) => (session, notifier),
         Err(err) => {
@@ -101,6 +103,7 @@ pub fn initialize_backend() {
         backends: HashMap::new(),
     };
     let mut state = Corrosion::new(event_loop.handle(), &mut display, data);
+
     let backend = match UdevBackend::new(&state.seat_name) {
         Ok(backend) => backend,
         Err(err) => {
@@ -113,6 +116,19 @@ pub fn initialize_backend() {
         state.device_added(DrmNode::from_dev_id(dev).unwrap(), &path);
     }
 
+    let mut libinput_context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(
+        state.backend_data.session.clone().into(),
+    );
+    libinput_context.udev_assign_seat(&state.seat_name).unwrap();
+    let libinput_backend = LibinputInputBackend::new(libinput_context);
+
+    state
+        .handle
+        .insert_source(libinput_backend, move |event, _, data| {
+            data.state.process_input_event(event);
+        })
+        .unwrap();
+
     event_loop
         .handle()
         .insert_source(backend, move |event, _, data| match event {
@@ -124,7 +140,23 @@ pub fn initialize_backend() {
                 data.state
                     .device_changed(DrmNode::from_dev_id(device_id).unwrap());
             }
-            _ => (),
+            udev::UdevEvent::Removed { device_id } => {
+                data.state
+                    .device_removed(DrmNode::from_dev_id(device_id).unwrap());
+            }
         })
         .expect("Error inserting event loop source");
+
+    let mut calloop_data = CalloopData { state, display };
+
+    event_loop
+        .run(
+            std::time::Duration::from_millis(16),
+            &mut calloop_data,
+            |data| {
+                data.state.space.refresh();
+                data.display.flush_clients().unwrap();
+            },
+        )
+        .unwrap();
 }

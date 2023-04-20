@@ -19,7 +19,7 @@ use smithay::{
             Display, DisplayHandle,
         },
     },
-    utils::{Logical, Point},
+    utils::{Clock, Logical, Monotonic, Point},
     wayland::{
         compositor::CompositorState,
         data_device::DataDeviceState,
@@ -52,6 +52,7 @@ pub struct Corrosion<BackendData: Backend + 'static> {
 
     pub seat: Seat<Self>,
     pub seat_name: String,
+    pub clock: Clock<Monotonic>,
 }
 
 impl<BackendData: Backend + 'static> Corrosion<BackendData> {
@@ -60,6 +61,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         display: &mut Display<Self>,
         backend_data: BackendData,
     ) -> Self {
+        let clock = Clock::new().expect("Unable to make clock");
         let start_time = std::time::Instant::now();
 
         let dh = display.handle();
@@ -113,6 +115,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
             seat_state,
             data_device_state,
             seat,
+            clock,
         }
     }
 
