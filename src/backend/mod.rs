@@ -11,6 +11,8 @@ use smithay::{
         renderer::{
             gles::GlesRenderer,
             multigpu::{gbm::GbmGlesBackend, GpuManager},
+
+            ImportMemWl,
         },
         session::libseat::LibSeatSession,
         session::Session,
@@ -116,6 +118,15 @@ pub fn initialize_backend() {
         state.device_added(DrmNode::from_dev_id(dev).unwrap(), &path);
     }
 
+    state.shm_state.update_formats(
+        state
+            .backend_data
+            .gpu_manager
+            .single_renderer(&primary_gpu)
+            .unwrap()
+            .shm_formats(),
+    );
+
     let mut libinput_context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(
         state.backend_data.session.clone().into(),
     );
@@ -147,6 +158,7 @@ pub fn initialize_backend() {
         })
         .expect("Error inserting event loop source");
 
+    std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
     let mut calloop_data = CalloopData { state, display };
 
     event_loop

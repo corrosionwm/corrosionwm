@@ -46,7 +46,9 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                     tracing::error!("Program argument in spawn is null");
                     return;
                 }
+                let socket = self.socket_name.clone();
                 execution = Command::new(program);
+                execution.env("WAYLAND_DISPLAY", socket);
                 args.remove(0);
                 println!("args: {:?}", args);
                 execution.args(args);

@@ -1,7 +1,11 @@
 use std::{collections::HashMap, os::fd::FromRawFd, time::Duration};
 
 use super::UdevData;
-use crate::{CalloopData, Corrosion};
+
+use crate::{
+    state::{post_repaint, take_presentation_feedback},
+    CalloopData, Corrosion,
+};
 use smithay::{
     backend::{
         allocator::{
@@ -717,22 +721,45 @@ impl Corrosion<UdevData> {
         let elements: Vec<_> =
             space::space_render_elements(&mut renderer, [&self.space], &output).unwrap();
 
-        match surface.compositor.render_frame::<_, _, GlesTexture>(
-            &mut renderer,
-            &elements,
-            [1.0f32, 1.0f32, 1.0f32, 1.0f32],
-        ) {
-            Ok(rendered) => match rendered {
-                (true, _) => {}
-                (false, _) => {
-                    self.render_surface(node, crtc);
-                }
-            },
-            Err(err) => {
-                tracing::error!("Error occurred while rendering compositor surface: {}", err);
-                return;
-            }
-        };
+        let (rendered, states) = surface
+            .compositor
+            .render_frame::<_, _, GlesTexture>(
+                &mut renderer,
+                &elements,
+                [1.0f32, 1.0f32, 1.0f32, 1.0f32],
+            )
+            .unwrap();
+
+        if rendered {
+            post_repaint(&output, &states, &self.space, self.clock.now());
+            let output_feedback = take_presentation_feedback(&output, &self.space, &states);
+            surface
+                .compositor
+                .queue_frame(Some(output_feedback))
+                .unwrap();
+        } else {
+            let output_refresh = match output.current_mode() {
+                Some(mode) => mode.refresh,
+                None => return,
+            };
+            // If reschedule is true we either hit a temporary failure or more likely rendering
+            // did not cause any damage on the output. In this case we just re-schedule a repaint
+            // after approx. one frame to re-test for damage.
+            let reschedule_duration =
+                Duration::from_millis((1_000_000f32 / output_refresh as f32) as u64);
+            tracing::trace!(
+                "reschedule repaint timer with delay {:?} on {:?}",
+                reschedule_duration,
+                crtc,
+            );
+            let timer = Timer::from_duration(reschedule_duration);
+            self.handle
+                .insert_source(timer, move |_, _, data| {
+                    data.state.render_surface(node, crtc);
+                    smithay::reexports::calloop::timer::TimeoutAction::Drop
+                })
+                .expect("failed to schedule frame timer");
+        }
     }
 
     pub fn schedule_initial_render(&mut self, node: DrmNode, crtc: CrtcHandle) {
