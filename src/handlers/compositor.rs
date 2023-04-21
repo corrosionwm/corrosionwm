@@ -19,6 +19,7 @@ impl<BackendData: Backend> CompositorHandler for Corrosion<BackendData> {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler(surface);
+        self.backend_data.early_import(surface);
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
             while let Some(parent) = get_parent(&root) {
