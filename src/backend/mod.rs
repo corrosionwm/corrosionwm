@@ -11,6 +11,7 @@ use smithay::{
         renderer::{
             gles::GlesRenderer,
             multigpu::{gbm::GbmGlesBackend, GpuManager},
+
             ImportMemWl,
         },
         session::libseat::LibSeatSession,
@@ -156,6 +157,7 @@ pub fn initialize_backend() {
             }
         })
         .expect("Error inserting event loop source");
+
     std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
     let mut calloop_data = CalloopData { state, display };
 

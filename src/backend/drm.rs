@@ -1,6 +1,7 @@
 use std::{collections::HashMap, os::fd::FromRawFd, time::Duration};
 
 use super::UdevData;
+
 use crate::{
     state::{post_repaint, take_presentation_feedback},
     CalloopData, Corrosion,

@@ -15,8 +15,6 @@ CorrosionWM is a blazing fast [Wayland compositor](https://wayland.freedesktop.o
 
 Join our [Discord](https://discord.gg/6sRvfeaNbQ)!
 
-We also have a [Matrix](https://matrix.to/#/#corrosionwm:matrix.org)!
-
 ## Features
 
 - [x] Can display simple applications
