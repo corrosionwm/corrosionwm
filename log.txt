@@ -1,0 +1,13 @@
+[110 19:18:14.941257] [glfw error 65544]: X11: The DISPLAY environment variable is missing
+GLFW initialization failed
+Compositor does not support wlr_layer_shell protocol, switching to normal window mode
+Compositor does not support wlr_layer_shell protocol, switching to normal window mode
+libinput error: event12 - DELL0A74:00 06CB:76B1 Touchpad: kernel bug: Touch jump detected and discarded.
+See https://wayland.freedesktop.org/libinput/doc/1.22.1/touchpad-jumping-cursors.html for details
+libinput error: event12 - DELL0A74:00 06CB:76B1 Touchpad: kernel bug: Touch jump detected and discarded.
+See https://wayland.freedesktop.org/libinput/doc/1.22.1/touchpad-jumping-cursors.html for details
+libinput error: event12 - DELL0A74:00 06CB:76B1 Touchpad: kernel bug: Touch jump detected and discarded.
+See https://wayland.freedesktop.org/libinput/doc/1.22.1/touchpad-jumping-cursors.html for details
+[110 19:18:51.796974] [glfw error 65544]: Wayland: fatal display error: Broken pipe
+Gdk-Message: 19:18:51.797: Error reading events from display: Broken pipe
+Gdk-Message: 19:18:51.797: Error reading events from display: Connection reset by peer

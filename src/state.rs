@@ -1,5 +1,5 @@
 // imports
-use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc};
+use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc, time::Duration};
 
 // nitelite's plug
 // watch nitelite's streams they are great :3
@@ -8,7 +8,14 @@ use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc};
 // shameless plug :trollface:
 
 use smithay::{
-    desktop::{Space, Window, WindowSurfaceType},
+    backend::renderer::element::{default_primary_scanout_output_compare, RenderElementStates},
+    desktop::{
+        utils::{
+            surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
+            update_surface_primary_scanout_output, OutputPresentationFeedback,
+        },
+        Space, Window, WindowSurfaceType,
+    },
     input::{pointer::PointerHandle, Seat, SeatState},
     output::Output,
     reexports::{
@@ -77,7 +84,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
         // A seat is a group of keyboards, pointer and touch devices.
         // A seat typically has a pointer and maintains a keyboard focus and a pointer focus.
-        let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "winit");
+        let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, &backend_data.seat_name());
 
         // Notify clients that we have a keyboard, for the sake of the example we assume that keyboard is always present.
         // You may want to track keyboard hot-plug in real compositor.
@@ -176,6 +183,52 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
                     .map(|(s, p)| (s, p + location))
             })
     }
+}
+
+pub fn post_repaint(
+    output: &Output,
+    render_states: &RenderElementStates,
+    space: &Space<Window>,
+    time: impl Into<Duration>,
+) {
+    let time = time.into();
+    let throttle = Some(Duration::from_secs(1));
+
+    space.elements().for_each(|window| {
+        window.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+
+            // TODO: implement fractional scale support
+        });
+        if space.outputs_for_element(window).contains(output) {
+            window.send_frame(output, time, throttle, surface_primary_scanout_output);
+        }
+    });
+}
+
+pub fn take_presentation_feedback(
+    output: &Output,
+    space: &Space<Window>,
+    states: &RenderElementStates,
+) -> OutputPresentationFeedback {
+    let mut output_presentation_feedback = OutputPresentationFeedback::new(output);
+
+    space.elements().for_each(|window| {
+        if space.outputs_for_element(window).contains(output) {
+            window.take_presentation_feedback(
+                &mut output_presentation_feedback,
+                surface_primary_scanout_output,
+                |surface, _| surface_presentation_feedback_flags_from_states(surface, states),
+            )
+        }
+    });
+    output_presentation_feedback
 }
 
 pub struct ClientState;
