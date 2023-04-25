@@ -8,7 +8,9 @@ use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc, time::Duration};
 // shameless plug :trollface:
 
 use smithay::{
-    backend::renderer::element::{default_primary_scanout_output_compare, RenderElementStates},
+    backend::renderer::element::{
+        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates,
+    },
     desktop::{
         utils::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
@@ -30,6 +32,7 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         data_device::DataDeviceState,
+        dmabuf::DmabufFeedback,
         output::OutputManagerState,
         shell::xdg::{decoration::XdgDecorationState, XdgShellState},
         shm::ShmState,
@@ -185,10 +188,17 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct SurfaceDmabufFeedback<'a> {
+    pub render_feedback: &'a DmabufFeedback,
+    pub scanout_feedback: &'a DmabufFeedback,
+}
+
 pub fn post_repaint(
     output: &Output,
     render_states: &RenderElementStates,
     space: &Space<Window>,
+    dmabuf_feedback: Option<SurfaceDmabufFeedback>,
     time: impl Into<Duration>,
 ) {
     let time = time.into();
@@ -208,6 +218,16 @@ pub fn post_repaint(
         });
         if space.outputs_for_element(window).contains(output) {
             window.send_frame(output, time, throttle, surface_primary_scanout_output);
+            if let Some(dmabuf_feedback) = dmabuf_feedback {
+                window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                })
+            }
         }
     });
 }

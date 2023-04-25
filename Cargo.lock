@@ -595,6 +595,8 @@ dependencies = [
  "drm-fourcc",
  "gbm-sys",
  "libc",
+ "wayland-backend",
+ "wayland-server",
 ]
 
 [[package]]
@@ -1568,11 +1570,13 @@ dependencies = [
  "thiserror",
  "tracing",
  "udev",
+ "wayland-backend",
  "wayland-egl",
  "wayland-protocols 0.30.0",
  "wayland-protocols-misc",
  "wayland-protocols-wlr",
  "wayland-server",
+ "wayland-sys 0.30.1",
  "winit",
  "x11rb",
  "xkbcommon",
@@ -2061,7 +2065,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96b2a02ac608e07132978689a6f9bf4214949c85998c247abadd4f4129b1aa06"
 dependencies = [
  "dlib",
+ "libc",
  "log",
+ "memoffset 0.7.1",
  "pkg-config",
 ]
 

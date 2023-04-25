@@ -5,7 +5,6 @@
 mod compositor;
 pub mod keybindings;
 mod xdg_shell;
-
 // imports
 use crate::state::Backend;
 use crate::Corrosion;

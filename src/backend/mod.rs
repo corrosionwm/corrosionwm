@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "egl")]
+use smithay::backend::renderer::ImportEgl;
 use smithay::{
     backend::{
         allocator::{
@@ -11,21 +13,26 @@ use smithay::{
         renderer::{
             gles::GlesRenderer,
             multigpu::{gbm::GbmGlesBackend, GpuManager},
-
-            ImportMemWl,
+            ImportDma, ImportMemWl,
         },
         session::libseat::LibSeatSession,
         session::Session,
         udev::{self, UdevBackend},
     },
+    delegate_dmabuf,
     reexports::{
         calloop::{EventLoop, LoopSignal},
         input::Libinput,
+        wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1,
         wayland_server::{protocol::wl_surface::WlSurface, Display},
+    },
+    wayland::dmabuf::{
+        DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+        ImportError,
     },
 };
 
-use self::drm::BackendData;
+use self::drm::{BackendData, SurfaceComposition};
 use crate::{state::Backend, CalloopData, Corrosion};
 
 mod drm;
@@ -34,10 +41,31 @@ struct UdevData {
     pub loop_signal: LoopSignal,
     pub session: LibSeatSession,
     primary_gpu: DrmNode,
+    dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
     allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
     gpu_manager: GpuManager<GbmGlesBackend<GlesRenderer>>,
     backends: HashMap<DrmNode, BackendData>,
 }
+
+impl DmabufHandler for Corrosion<UdevData> {
+    fn dmabuf_state(&mut self) -> &mut smithay::wayland::dmabuf::DmabufState {
+        &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+    ) -> Result<(), smithay::wayland::dmabuf::ImportError> {
+        self.backend_data
+            .gpu_manager
+            .single_renderer(&self.backend_data.primary_gpu)
+            .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
+            .map(|_| ())
+            .map_err(|_| ImportError::Failed)
+    }
+}
+delegate_dmabuf!(Corrosion<UdevData>);
 
 impl Backend for UdevData {
     fn early_import(&mut self, output: &WlSurface) {
@@ -98,6 +126,7 @@ pub fn initialize_backend() {
 
     let data = UdevData {
         loop_signal: event_loop.get_signal(),
+        dmabuf_state: None,
         session,
         primary_gpu,
         allocator: None,
@@ -139,7 +168,46 @@ pub fn initialize_backend() {
             data.state.process_input_event(event);
         })
         .unwrap();
+    #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
+    let mut renderer = state
+        .backend_data
+        .gpu_manager
+        .single_renderer(&primary_gpu)
+        .unwrap();
 
+    #[cfg(feature = "egl")]
+    renderer
+        .bind_wl_display(&state.display_handle)
+        .expect("Unable to enable egl-accelerated hardware");
+
+    let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
+    let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)
+        .build()
+        .unwrap();
+    let mut dmabuf_state = DmabufState::new();
+    let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<Corrosion<UdevData>>(
+        &display.handle(),
+        &default_feedback,
+    );
+    state.backend_data.dmabuf_state = Some((dmabuf_state, dmabuf_global));
+
+    let gpus = &mut state.backend_data.gpu_manager;
+    state
+        .backend_data
+        .backends
+        .values_mut()
+        .for_each(|backend_data| {
+            backend_data.surfaces.values_mut().for_each(|surface_data| {
+                surface_data.dmabuf_feedback = surface_data.dmabuf_feedback.take().or_else(|| {
+                    get_surface_dmabuf_feedback(
+                        primary_gpu,
+                        surface_data.render_node,
+                        gpus,
+                        &surface_data.compositor,
+                    )
+                });
+            });
+        });
     event_loop
         .handle()
         .insert_source(backend, move |event, _, data| match event {
@@ -171,4 +239,75 @@ pub fn initialize_backend() {
             },
         )
         .unwrap();
+}
+
+pub struct DrmSurfaceDmabufFeedback {
+    render_feedback: DmabufFeedback,
+    scanout_feedback: DmabufFeedback,
+}
+
+fn get_surface_dmabuf_feedback(
+    primary_node: DrmNode,
+    render_node: DrmNode,
+    gpus: &mut GpuManager<GbmGlesBackend<GlesRenderer>>,
+    composition: &SurfaceComposition,
+) -> Option<DrmSurfaceDmabufFeedback> {
+    let primary_formats = gpus
+        .single_renderer(&primary_node)
+        .ok()?
+        .dmabuf_formats()
+        .collect::<HashSet<_>>();
+
+    let render_formats = gpus
+        .single_renderer(&render_node)
+        .ok()?
+        .dmabuf_formats()
+        .collect::<HashSet<_>>();
+
+    let all_render_formats = primary_formats
+        .iter()
+        .chain(render_formats.iter())
+        .copied()
+        .collect::<HashSet<_>>();
+
+    let surface = composition.surface();
+    let planes = surface.planes().unwrap();
+
+    let planes_formats = surface
+        .supported_formats(planes.primary.handle)
+        .unwrap()
+        .into_iter()
+        .chain(
+            planes
+                .overlay
+                .iter()
+                .flat_map(|p| surface.supported_formats(p.handle).unwrap()),
+        )
+        .collect::<HashSet<_>>()
+        .intersection(&all_render_formats)
+        .copied()
+        .collect::<Vec<_>>();
+
+    let builder = DmabufFeedbackBuilder::new(primary_node.dev_id(), primary_formats);
+    let render_feedback = builder
+        .clone()
+        .add_preference_tranche(render_node.dev_id(), None, render_formats.clone())
+        .build()
+        .unwrap();
+
+    let scanout_feedback = builder
+        .clone()
+        .add_preference_tranche(
+            surface.device_fd().dev_id().unwrap(),
+            Some(zwp_linux_dmabuf_feedback_v1::TrancheFlags::Scanout),
+            planes_formats,
+        )
+        .add_preference_tranche(render_node.dev_id(), None, render_formats)
+        .build()
+        .unwrap();
+
+    Some(DrmSurfaceDmabufFeedback {
+        render_feedback,
+        scanout_feedback,
+    })
 }

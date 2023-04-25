@@ -1,9 +1,10 @@
 use std::{collections::HashMap, os::fd::FromRawFd, time::Duration};
 
-use super::UdevData;
+use super::{DrmSurfaceDmabufFeedback, UdevData};
 
 use crate::{
-    state::{post_repaint, take_presentation_feedback},
+    backend::get_surface_dmabuf_feedback,
+    state::{post_repaint, take_presentation_feedback, SurfaceDmabufFeedback},
     CalloopData, Corrosion,
 };
 use smithay::{
@@ -73,7 +74,7 @@ struct UdevOutputId {
     device_id: DrmNode,
 }
 
-enum SurfaceComposition {
+pub enum SurfaceComposition {
     Surface {
         surface: RenderingSurface,
         damage_tracker: OutputDamageTracker,
@@ -85,20 +86,21 @@ type UdevRenderer<'a, 'b> =
     MultiRenderer<'a, 'a, 'b, GbmGlesBackend<GlesRenderer>, GbmGlesBackend<GlesRenderer>>;
 
 pub struct SurfaceData {
-    _dh: DisplayHandle,
-    compositor: SurfaceComposition,
-    _id: Option<GlobalId>,
-    render_node: DrmNode,
-    device_node: DrmNode,
+    pub _dh: DisplayHandle,
+    pub compositor: SurfaceComposition,
+    pub _id: Option<GlobalId>,
+    pub render_node: DrmNode,
+    pub device_node: DrmNode,
+    pub dmabuf_feedback: Option<DrmSurfaceDmabufFeedback>,
 }
 
 pub struct BackendData {
-    token: RegistrationToken,
-    scanner: DrmScanner,
-    render_node: DrmNode,
-    surfaces: HashMap<CrtcHandle, SurfaceData>,
-    gbm: GbmDevice<DrmDeviceFd>,
-    drm: DrmDevice,
+    pub token: RegistrationToken,
+    pub scanner: DrmScanner,
+    pub render_node: DrmNode,
+    pub surfaces: HashMap<CrtcHandle, SurfaceData>,
+    pub gbm: GbmDevice<DrmDeviceFd>,
+    pub drm: DrmDevice,
 }
 
 impl SurfaceComposition {
@@ -126,7 +128,7 @@ impl SurfaceComposition {
         }
     }
 
-    pub fn _surface(&self) -> &DrmSurface {
+    pub fn surface(&self) -> &DrmSurface {
         match self {
             SurfaceComposition::Compositor(compositor) => compositor.surface(),
             Self::Surface {
@@ -440,6 +442,13 @@ impl Corrosion<UdevData> {
             SurfaceComposition::Compositor(compositor)
         };
 
+        let dmabuf_feedback = get_surface_dmabuf_feedback(
+            self.backend_data.primary_gpu,
+            device.render_node,
+            &mut self.backend_data.gpu_manager,
+            &compositor,
+        );
+
         device.surfaces.insert(
             crtc,
             SurfaceData {
@@ -448,6 +457,7 @@ impl Corrosion<UdevData> {
                 _id: Some(global),
                 render_node: device.render_node,
                 device_node: node,
+                dmabuf_feedback,
             },
         );
 
@@ -726,12 +736,24 @@ impl Corrosion<UdevData> {
             .render_frame::<_, _, GlesTexture>(
                 &mut renderer,
                 &elements,
-                [1.0f32, 1.0f32, 1.0f32, 1.0f32],
+                [0.0f32, 1.0f32, 1.0f32, 1.0f32],
             )
             .unwrap();
 
+        post_repaint(
+            &output,
+            &states,
+            &self.space,
+            surface
+                .dmabuf_feedback
+                .as_ref()
+                .map(|feedback| SurfaceDmabufFeedback {
+                    render_feedback: &feedback.render_feedback,
+                    scanout_feedback: &feedback.scanout_feedback,
+                }),
+            self.clock.now(),
+        );
         if rendered {
-            post_repaint(&output, &states, &self.space, self.clock.now());
             let output_feedback = take_presentation_feedback(&output, &self.space, &states);
             surface
                 .compositor
@@ -790,7 +812,7 @@ fn initial_render(surface: &mut SurfaceData, renderer: &mut UdevRenderer<'_, '_>
     surface.compositor.render_frame::<_, SpaceRenderElements<
         UdevRenderer,
         WaylandSurfaceRenderElement<UdevRenderer>,
-    >, GlesTexture>(renderer, &[], [1.0f32, 1.0f32, 1.0f32, 1.0f32]).expect("Unable to render");
+    >, GlesTexture>(renderer, &[], [0.0f32, 1.0f32, 1.0f32, 1.0f32]).expect("Unable to render");
     surface.compositor.queue_frame(None).unwrap();
     surface.compositor.reset_buffers();
 }
