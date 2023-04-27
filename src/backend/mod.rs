@@ -5,7 +5,8 @@ use smithay::backend::renderer::ImportEgl;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf},
+            dmabuf::{AnyError, Dmabuf, DmabufAllocator},
+            gbm::{GbmAllocator, GbmBufferFlags},
             Allocator,
         },
         drm::{DrmNode, NodeType},
@@ -168,6 +169,21 @@ pub fn initialize_backend() {
             data.state.process_input_event(event);
         })
         .unwrap();
+
+    let gbm = state
+        .backend_data
+        .backends
+        .get(&primary_gpu)
+        // If the primary_gpu failed to initialize, we likely have a kmsro device
+        .or_else(|| state.backend_data.backends.values().next())
+        // Don't fail, if there is no allocator. There is a chance, that this a single gpu system and we don't need one.
+        .map(|backend| backend.gbm.clone());
+    state.backend_data.allocator = gbm.map(|gbm| {
+        Box::new(DmabufAllocator(GbmAllocator::new(
+            gbm,
+            GbmBufferFlags::RENDERING,
+        ))) as Box<_>
+    });
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
     let mut renderer = state
         .backend_data
@@ -176,9 +192,12 @@ pub fn initialize_backend() {
         .unwrap();
 
     #[cfg(feature = "egl")]
-    renderer
-        .bind_wl_display(&state.display_handle)
-        .expect("Unable to enable egl-accelerated hardware");
+    {
+        match renderer.bind_wl_display(&state.display_handle) {
+            Ok(_) => tracing::info!("Enabled egl hardware acceleration"),
+            Err(err) => tracing::error!("Error in enabling egl hardware acceleration: {:?}", err),
+        }
+    }
 
     let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
     let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)

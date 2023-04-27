@@ -34,6 +34,7 @@ use smithay::{
         data_device::DataDeviceState,
         dmabuf::DmabufFeedback,
         output::OutputManagerState,
+        presentation::PresentationState,
         shell::xdg::{decoration::XdgDecorationState, XdgShellState},
         shm::ShmState,
         socket::ListeningSocketSource,
@@ -59,6 +60,7 @@ pub struct Corrosion<BackendData: Backend + 'static> {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Corrosion<BackendData>>,
     pub data_device_state: DataDeviceState,
+    pub presentation_state: PresentationState,
 
     pub seat: Seat<Self>,
     pub seat_name: String,
@@ -102,6 +104,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         // Windows get a position and stacking order through mapping.
         // Outputs become views of a part of the Space and can be rendered via Space::render_output.
         let space = Space::default();
+        let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
 
         let socket_name = Self::init_wayland_listener(display, &handle);
 
@@ -124,6 +127,7 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
             output_manager_state,
             seat_state,
             data_device_state,
+            presentation_state,
             seat,
             clock,
         }

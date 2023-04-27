@@ -1,5 +1,5 @@
 use smithay::{
-    delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_presentation, delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{Space, Window},
     input::{
         pointer::{Focus, GrabStartData as PointerGrabStartData},
@@ -143,6 +143,8 @@ impl<BackendData: Backend> XdgDecorationHandler for Corrosion<BackendData> {
 delegate_xdg_shell!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
 // Xdg Decoration
 delegate_xdg_decoration!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
+// Presentation
+delegate_presentation!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
 
 fn check_grab<BackendData: Backend + 'static>(
     seat: &Seat<Corrosion<BackendData>>,
