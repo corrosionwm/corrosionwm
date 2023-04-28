@@ -1537,7 +1537,7 @@ checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
 [[package]]
 name = "smithay"
 version = "0.3.0"
-source = "git+https://github.com/Smithay/smithay#190d06784c3ab112e699e2767032188f0c695f72"
+source = "git+https://github.com/Smithay/smithay#3c56deb146b799612a41b71d2475cc4bada7f022"
 dependencies = [
  "appendlist",
  "ash",
@@ -1600,6 +1600,7 @@ dependencies = [
 [[package]]
 name = "smithay-drm-extras"
 version = "0.1.0"
+source = "git+https://github.com/Smithay/smithay#3c56deb146b799612a41b71d2475cc4bada7f022"
 dependencies = [
  "drm",
  "edid-rs",
