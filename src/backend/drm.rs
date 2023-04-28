@@ -292,7 +292,7 @@ impl Corrosion<UdevData> {
             return;
         };
 
-        let renderer = self
+        let mut renderer = self
             .backend_data
             .gpu_manager
             .single_renderer(&device.render_node)

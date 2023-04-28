@@ -7,6 +7,7 @@ use smithay::{
         allocator::{
             dmabuf::{AnyError, Dmabuf, DmabufAllocator},
             gbm::{GbmAllocator, GbmBufferFlags},
+            vulkan::{ImageUsageFlags, VulkanAllocator},
             Allocator,
         },
         drm::{DrmNode, NodeType},
@@ -19,9 +20,11 @@ use smithay::{
         session::libseat::LibSeatSession,
         session::Session,
         udev::{self, UdevBackend},
+        vulkan::{version::Version, Instance, PhysicalDevice},
     },
     delegate_dmabuf,
     reexports::{
+        ash::vk::ExtPhysicalDeviceDrmFn,
         calloop::{EventLoop, LoopSignal},
         input::Libinput,
         wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1,
@@ -156,6 +159,34 @@ pub fn initialize_backend() {
             .unwrap()
             .shm_formats(),
     );
+
+    if let Ok(instance) = Instance::new(Version::VERSION_1_2, None) {
+        if let Some(physical_device) =
+            PhysicalDevice::enumerate(&instance)
+                .ok()
+                .and_then(|devices| {
+                    devices
+                        .filter(|phd| phd.has_device_extension(ExtPhysicalDeviceDrmFn::name()))
+                        .find(|phd| {
+                            phd.primary_node().unwrap() == Some(primary_gpu)
+                                || phd.render_node().unwrap() == Some(primary_gpu)
+                        })
+                })
+        {
+            match VulkanAllocator::new(
+                &physical_device,
+                ImageUsageFlags::COLOR_ATTACHMENT | ImageUsageFlags::SAMPLED,
+            ) {
+                Ok(allocator) => {
+                    state.backend_data.allocator = Some(Box::new(DmabufAllocator(allocator))
+                        as Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>);
+                }
+                Err(err) => {
+                    tracing::warn!("Failed to create vulkan allocator: {}", err);
+                }
+            }
+        }
+    }
 
     let mut libinput_context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(
         state.backend_data.session.clone().into(),
