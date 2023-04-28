@@ -298,7 +298,7 @@ impl Corrosion<UdevData> {
             .single_renderer(&device.render_node)
             .unwrap();
         let render_formats = renderer
-            .as_ref()
+            .as_mut()
             .egl_context()
             .dmabuf_render_formats()
             .clone();
