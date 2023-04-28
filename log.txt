@@ -1,3 +1,0 @@
-[117 17:37:57.642998] [glfw error 65544]: X11: The DISPLAY environment variable is missing
-GLFW initialization failed
-[117 17:38:03.865841] [glfw error 65544]: Wayland: fatal display error: Connection reset by peer
