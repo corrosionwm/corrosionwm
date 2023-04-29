@@ -4,7 +4,9 @@
 // modules
 mod compositor;
 pub mod keybindings;
+mod wlr_layer;
 mod xdg_shell;
+
 // imports
 use crate::state::Backend;
 use crate::Corrosion;

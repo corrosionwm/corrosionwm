@@ -1,6 +1,7 @@
 use smithay::{
     delegate_layer_shell,
-    desktop::LayerSurface,
+    desktop::{self, LayerSurface},
+    output::Output,
     wayland::shell::wlr_layer::{WlrLayerShellHandler, WlrLayerShellState},
 };
 
@@ -18,13 +19,18 @@ impl<BackendData: Backend + 'static> WlrLayerShellHandler for Corrosion<BackendD
         layer: smithay::wayland::shell::wlr_layer::Layer,
         namespace: String,
     ) {
+        let output = output
+            .as_ref()
+            .and_then(Output::from_resource)
+            .unwrap_or_else(|| self.space.outputs().next().unwrap().clone());
         tracing::debug!(
             "New layer surface created with the name of: {}, using layer: {:?}",
             &namespace,
             layer
         );
-
-        surface.send_configure();
+        let mut map = desktop::layer_map_for_output(&output);
+        map.map_layer(&LayerSurface::new(surface, namespace))
+            .unwrap();
     }
 }
 

@@ -12,11 +12,12 @@ use smithay::{
         default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates,
     },
     desktop::{
+        self,
         utils::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
             update_surface_primary_scanout_output, OutputPresentationFeedback,
         },
-        Space, Window, WindowSurfaceType,
+        PopupManager, Space, Window, WindowSurfaceType,
     },
     input::{pointer::PointerHandle, Seat, SeatState},
     output::Output,
@@ -35,7 +36,10 @@ use smithay::{
         dmabuf::DmabufFeedback,
         output::OutputManagerState,
         presentation::PresentationState,
-        shell::xdg::{decoration::XdgDecorationState, XdgShellState},
+        shell::{
+            wlr_layer::WlrLayerShellState,
+            xdg::{decoration::XdgDecorationState, XdgShellState},
+        },
         shm::ShmState,
         socket::ListeningSocketSource,
     },
@@ -61,6 +65,8 @@ pub struct Corrosion<BackendData: Backend + 'static> {
     pub seat_state: SeatState<Corrosion<BackendData>>,
     pub data_device_state: DataDeviceState,
     pub presentation_state: PresentationState,
+    pub popup_manager: PopupManager,
+    pub wlr_layer_state: WlrLayerShellState,
 
     pub seat: Seat<Self>,
     pub seat_name: String,
@@ -78,13 +84,22 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
         let dh = display.handle();
 
+        // Creates a compositor global. Used to store and access surface trees.
         let compositor_state = CompositorState::new::<Self>(&dh);
+        // Creates an xdg shell global. Xdg shell is used by many clients and compositors to
+        // provide utilities for basic window management
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        // Handles window decoration
         let xdg_decoration_state =
             XdgDecorationState::new::<Corrosion<BackendData>>(&display.handle());
+
+        // Creates an shm global. Shm is used to share wlbuffers between the client and server
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
+        // Advertises output globals to clients
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
+        // Handles input devices
         let mut seat_state = SeatState::new();
+        // Creates a global that handles clipboard data and drag-n-drop
         let data_device_state = DataDeviceState::new::<Self>(&dh);
 
         // A seat is a group of keyboards, pointer and touch devices.
@@ -106,6 +121,15 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         let space = Space::default();
         let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
 
+        // Manager to track popups and their relations to a surface
+        let popup_manager = PopupManager::default();
+
+        // Creates a wlr layer manager. Thanks to the people at wlroots, Surfaces can be layered,
+        // so the layer manager global will handle the requests made by a client that supports the
+        // protocol
+        let wlr_layer_state = WlrLayerShellState::new::<Self>(&dh);
+
+        // Initializes a wayland listener socket
         let socket_name = Self::init_wayland_listener(display, &handle);
 
         // Return the state
@@ -128,6 +152,9 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
             seat_state,
             data_device_state,
             presentation_state,
+            popup_manager,
+            wlr_layer_state,
+
             seat,
             clock,
         }
@@ -234,6 +261,34 @@ pub fn post_repaint(
             }
         }
     });
+
+    let map = desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
+        layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
+        if let Some(dmabuf_feedback) = dmabuf_feedback {
+            layer_surface.send_dmabuf_feedback(
+                output,
+                surface_primary_scanout_output,
+                |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                },
+            );
+        }
+    }
 }
 
 pub fn take_presentation_feedback(
@@ -252,6 +307,14 @@ pub fn take_presentation_feedback(
             )
         }
     });
+    let map = desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut output_presentation_feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, states),
+        );
+    }
     output_presentation_feedback
 }
 

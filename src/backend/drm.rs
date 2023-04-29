@@ -736,7 +736,7 @@ impl Corrosion<UdevData> {
             .render_frame::<_, _, GlesTexture>(
                 &mut renderer,
                 &elements,
-                [0.0f32, 1.0f32, 1.0f32, 1.0f32],
+                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
             )
             .unwrap();
 

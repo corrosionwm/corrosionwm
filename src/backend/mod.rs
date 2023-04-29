@@ -30,9 +30,12 @@ use smithay::{
         wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1,
         wayland_server::{protocol::wl_surface::WlSurface, Display},
     },
-    wayland::dmabuf::{
-        DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
-        ImportError,
+    wayland::{
+        dmabuf::{
+            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+            ImportError,
+        },
+        shell::wlr_layer::WlrLayerShellHandler,
     },
 };
 
@@ -285,6 +288,7 @@ pub fn initialize_backend() {
             &mut calloop_data,
             |data| {
                 data.state.space.refresh();
+                data.state.popup_manager.cleanup();
                 data.display.flush_clients().unwrap();
             },
         )
