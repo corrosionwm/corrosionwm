@@ -43,7 +43,7 @@ use smithay::{
         },
         nix::fcntl::OFlag,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-        wayland_server::{backend::GlobalId, DisplayHandle},
+        wayland_server::{backend::GlobalId, protocol::wl_output::WlOutput, DisplayHandle},
     },
     utils::DeviceFd,
 };
@@ -86,9 +86,9 @@ type UdevRenderer<'a, 'b> =
     MultiRenderer<'a, 'a, 'b, GbmGlesBackend<GlesRenderer>, GbmGlesBackend<GlesRenderer>>;
 
 pub struct SurfaceData {
-    pub _dh: DisplayHandle,
+    pub dh: DisplayHandle,
     pub compositor: SurfaceComposition,
-    pub _id: Option<GlobalId>,
+    pub id: Option<GlobalId>,
     pub render_node: DrmNode,
     pub device_node: DrmNode,
     pub dmabuf_feedback: Option<DrmSurfaceDmabufFeedback>,
@@ -101,6 +101,14 @@ pub struct BackendData {
     pub surfaces: HashMap<CrtcHandle, SurfaceData>,
     pub gbm: GbmDevice<DrmDeviceFd>,
     pub drm: DrmDevice,
+}
+
+impl Drop for SurfaceData {
+    fn drop(&mut self) {
+        if let Some(global) = self.id.take() {
+            self.dh.remove_global::<WlOutput>(global);
+        }
+    }
 }
 
 impl SurfaceComposition {
@@ -452,9 +460,9 @@ impl Corrosion<UdevData> {
         device.surfaces.insert(
             crtc,
             SurfaceData {
-                _dh: self.display_handle.clone(),
+                dh: self.display_handle.clone(),
                 compositor,
-                _id: Some(global),
+                id: Some(global),
                 render_node: device.render_node,
                 device_node: node,
                 dmabuf_feedback,
@@ -736,7 +744,7 @@ impl Corrosion<UdevData> {
             .render_frame::<_, _, GlesTexture>(
                 &mut renderer,
                 &elements,
-                [0.0f32, 0.0f32, 0.0f32, 0.0f32],
+                [0.2f32, 0.05f32, 0.6f32, 1.0f32],
             )
             .unwrap();
 
@@ -812,7 +820,7 @@ fn initial_render(surface: &mut SurfaceData, renderer: &mut UdevRenderer<'_, '_>
     surface.compositor.render_frame::<_, SpaceRenderElements<
         UdevRenderer,
         WaylandSurfaceRenderElement<UdevRenderer>,
-    >, GlesTexture>(renderer, &[], [0.0f32, 1.0f32, 1.0f32, 1.0f32]).expect("Unable to render");
+    >, GlesTexture>(renderer, &[], [0.2f32, 0.05f32, 0.6f32, 1.0f32]).expect("Unable to render");
     surface.compositor.queue_frame(None).unwrap();
     surface.compositor.reset_buffers();
 }
