@@ -36,7 +36,7 @@ impl Backend for WinitData {
 
     fn early_import(&mut self, _output: &WlSurface) {}
 
-    fn reset_buffers(&self, _surface: &Output) {}
+    fn reset_buffers(&mut self, _surface: &Output) {}
 }
 
 pub fn init_winit<BackendData: Backend + 'static>() -> Result<(), Box<dyn std::error::Error>> {
@@ -141,7 +141,8 @@ pub fn winit_dispatch<BackendData: Backend>(
             );
             tracing::debug!("Resized to {:?}", size);
         }
-        WinitEvent::Input(event) => state.process_input_event(event),
+        // TODO: make input event processor for winit backend
+        // WinitEvent::Input(event) => state.process_input_event(event),
         _ => (),
     });
 

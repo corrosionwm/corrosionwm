@@ -31,8 +31,9 @@ impl<BackendData: Backend + 'static> SeatHandler for Corrosion<BackendData> {
     fn cursor_image(
         &mut self,
         _seat: &smithay::input::Seat<Self>,
-        _image: smithay::input::pointer::CursorImageStatus,
+        image: smithay::input::pointer::CursorImageStatus,
     ) {
+        *self.cursor_image_status.lock().unwrap() = image;
     }
     fn focus_changed(&mut self, _seat: &smithay::input::Seat<Self>, _focused: Option<&WlSurface>) {}
 }

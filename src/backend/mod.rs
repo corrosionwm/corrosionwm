@@ -13,8 +13,9 @@ use smithay::{
         drm::{DrmNode, NodeType},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
+            element::texture::TextureBuffer,
             gles::GlesRenderer,
-            multigpu::{gbm::GbmGlesBackend, GpuManager},
+            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiTexture},
             ImportDma, ImportMemWl,
         },
         session::libseat::LibSeatSession,
@@ -30,21 +31,19 @@ use smithay::{
         wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1,
         wayland_server::{protocol::wl_surface::WlSurface, Display},
     },
-    wayland::{
-        dmabuf::{
-            DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
-            ImportError,
-        },
-        shell::wlr_layer::WlrLayerShellHandler,
+    wayland::dmabuf::{
+        DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+        ImportError,
     },
 };
 
-use self::drm::{BackendData, SurfaceComposition};
-use crate::{state::Backend, CalloopData, Corrosion};
+use self::drm::{BackendData, SurfaceComposition, UdevOutputId};
+use crate::{cursor::Cursor, drawing::PointerElement, state::Backend, CalloopData, Corrosion};
 
 mod drm;
+mod utils;
 
-struct UdevData {
+pub struct UdevData {
     pub loop_signal: LoopSignal,
     pub session: LibSeatSession,
     primary_gpu: DrmNode,
@@ -52,6 +51,9 @@ struct UdevData {
     allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
     gpu_manager: GpuManager<GbmGlesBackend<GlesRenderer>>,
     backends: HashMap<DrmNode, BackendData>,
+    pointer_element: PointerElement<MultiTexture>,
+    cursor_image: Cursor,
+    cursor_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
 }
 
 impl DmabufHandler for Corrosion<UdevData> {
@@ -89,8 +91,14 @@ impl Backend for UdevData {
         &self.loop_signal
     }
 
-    fn reset_buffers(&self, _surface: &smithay::output::Output) {
-        todo!();
+    fn reset_buffers(&mut self, output: &smithay::output::Output) {
+        if let Some(id) = output.user_data().get::<UdevOutputId>() {
+            if let Some(gpu) = self.backends.get_mut(&id.device_id) {
+                if let Some(surface) = gpu.surfaces.get_mut(&id.crtc) {
+                    surface.compositor.reset_buffers();
+                }
+            }
+        }
     }
 
     fn seat_name(&self) -> String {
@@ -139,6 +147,9 @@ pub fn initialize_backend() {
         allocator: None,
         gpu_manager: gpus,
         backends: HashMap::new(),
+        cursor_image: Cursor::load(),
+        cursor_images: Vec::new(),
+        pointer_element: PointerElement::default(),
     };
     let mut state = Corrosion::new(event_loop.handle(), &mut display, data);
 
@@ -195,7 +206,7 @@ pub fn initialize_backend() {
         state.backend_data.session.clone().into(),
     );
     libinput_context.udev_assign_seat(&state.seat_name).unwrap();
-    let libinput_backend = LibinputInputBackend::new(libinput_context);
+    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
 
     state
         .handle

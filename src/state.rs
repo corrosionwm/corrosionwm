@@ -1,5 +1,10 @@
 // imports
-use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc, time::Duration};
+use std::{
+    ffi::OsString,
+    os::unix::io::AsRawFd,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 // nitelite's plug
 // watch nitelite's streams they are great :3
@@ -17,9 +22,12 @@ use smithay::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
             update_surface_primary_scanout_output, OutputPresentationFeedback,
         },
-        PopupManager, Space, Window, WindowSurfaceType,
+        PopupManager, Space, Window, 
     },
-    input::{pointer::PointerHandle, Seat, SeatState},
+    input::{
+        pointer::{CursorImageStatus, PointerHandle},
+        Seat, SeatState,
+    },
     output::Output,
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, LoopSignal, Mode, PostAction},
@@ -37,7 +45,7 @@ use smithay::{
         output::OutputManagerState,
         presentation::PresentationState,
         shell::{
-            wlr_layer::WlrLayerShellState,
+            wlr_layer::{Layer, WlrLayerShellState},
             xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
@@ -68,6 +76,8 @@ pub struct Corrosion<BackendData: Backend + 'static> {
     pub popup_manager: PopupManager,
     pub wlr_layer_state: WlrLayerShellState,
 
+    pub cursor_image_status: Arc<Mutex<CursorImageStatus>>,
+    pub pointer_location: Point<f64, Logical>,
     pub seat: Seat<Self>,
     pub seat_name: String,
     pub clock: Clock<Monotonic>,
@@ -114,6 +124,8 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         // Here we assume that there is always pointer plugged in
         seat.add_pointer();
 
+        let cursor_image_status = Arc::new(Mutex::new(CursorImageStatus::Default));
+
         // A space represents a two-dimensional plane. Windows and Outputs can be mapped onto it.
         //
         // Windows get a position and stacking order through mapping.
@@ -155,6 +167,8 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
             popup_manager,
             wlr_layer_state,
 
+            cursor_image_status,
+            pointer_location: (0.0, 0.0).into(),
             seat,
             clock,
         }
@@ -209,13 +223,37 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         pointer: &PointerHandle<Self>,
     ) -> Option<(WlSurface, Point<i32, Logical>)> {
         let pos = pointer.current_location();
-        self.space
-            .element_under(pos)
-            .and_then(|(window, location)| {
-                window
-                    .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                    .map(|(s, p)| (s, p + location))
+        let output = self
+            .space
+            .outputs()
+            .find(|output| {
+                let geometry = self.space.output_geometry(output).unwrap();
+                geometry.contains(pos.to_i32_round())
             })
+            .unwrap();
+        let map = desktop::layer_map_for_output(output);
+        let mut under = None;
+
+        if let Some(layer) = map
+            .layer_under(Layer::Overlay, pos)
+            .or_else(|| map.layer_under(Layer::Top, pos))
+        {
+            let layer_geometry = map.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.wl_surface().clone(), layer_geometry))
+        } else if let Some((window, location)) = self
+            .space
+            .element_under(pos)
+            .map(|(focus_target, location)| (focus_target.toplevel().wl_surface(), location))
+        {
+            under = Some((window.clone(), location))
+        } else if let Some(layer) = map
+            .layer_under(Layer::Bottom, pos)
+            .or_else(|| map.layer_under(Layer::Background, pos))
+        {
+            let layer_geometry = map.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.wl_surface().clone(), layer_geometry))
+        }
+        under
     }
 }
 
@@ -336,5 +374,5 @@ pub trait Backend {
     fn loop_signal(&self) -> &LoopSignal;
     fn seat_name(&self) -> String;
     fn early_import(&mut self, output: &WlSurface);
-    fn reset_buffers(&self, surface: &Output);
+    fn reset_buffers(&mut self, surface: &Output);
 }
