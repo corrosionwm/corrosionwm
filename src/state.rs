@@ -1,5 +1,10 @@
 // imports
-use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc, time::Duration};
+use std::{
+    ffi::OsString,
+    os::unix::io::AsRawFd,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 // nitelite's plug
 // watch nitelite's streams they are great :3
@@ -8,15 +13,21 @@ use std::{ffi::OsString, os::unix::io::AsRawFd, sync::Arc, time::Duration};
 // shameless plug :trollface:
 
 use smithay::{
-    backend::renderer::element::{default_primary_scanout_output_compare, RenderElementStates},
+    backend::renderer::element::{
+        default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates,
+    },
     desktop::{
+        self,
         utils::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
             update_surface_primary_scanout_output, OutputPresentationFeedback,
         },
-        Space, Window, WindowSurfaceType,
+        PopupManager, Space, Window, 
     },
-    input::{pointer::PointerHandle, Seat, SeatState},
+    input::{
+        pointer::{CursorImageStatus, PointerHandle},
+        Seat, SeatState,
+    },
     output::Output,
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, LoopSignal, Mode, PostAction},
@@ -30,8 +41,13 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         data_device::DataDeviceState,
+        dmabuf::DmabufFeedback,
         output::OutputManagerState,
-        shell::xdg::{decoration::XdgDecorationState, XdgShellState},
+        presentation::PresentationState,
+        shell::{
+            wlr_layer::{Layer, WlrLayerShellState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
+        },
         shm::ShmState,
         socket::ListeningSocketSource,
     },
@@ -56,7 +72,12 @@ pub struct Corrosion<BackendData: Backend + 'static> {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Corrosion<BackendData>>,
     pub data_device_state: DataDeviceState,
+    pub presentation_state: PresentationState,
+    pub popup_manager: PopupManager,
+    pub wlr_layer_state: WlrLayerShellState,
 
+    pub cursor_image_status: Arc<Mutex<CursorImageStatus>>,
+    pub pointer_location: Point<f64, Logical>,
     pub seat: Seat<Self>,
     pub seat_name: String,
     pub clock: Clock<Monotonic>,
@@ -73,13 +94,22 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
 
         let dh = display.handle();
 
+        // Creates a compositor global. Used to store and access surface trees.
         let compositor_state = CompositorState::new::<Self>(&dh);
+        // Creates an xdg shell global. Xdg shell is used by many clients and compositors to
+        // provide utilities for basic window management
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        // Handles window decoration
         let xdg_decoration_state =
             XdgDecorationState::new::<Corrosion<BackendData>>(&display.handle());
+
+        // Creates an shm global. Shm is used to share wlbuffers between the client and server
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
+        // Advertises output globals to clients
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
+        // Handles input devices
         let mut seat_state = SeatState::new();
+        // Creates a global that handles clipboard data and drag-n-drop
         let data_device_state = DataDeviceState::new::<Self>(&dh);
 
         // A seat is a group of keyboards, pointer and touch devices.
@@ -94,12 +124,24 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         // Here we assume that there is always pointer plugged in
         seat.add_pointer();
 
+        let cursor_image_status = Arc::new(Mutex::new(CursorImageStatus::Default));
+
         // A space represents a two-dimensional plane. Windows and Outputs can be mapped onto it.
         //
         // Windows get a position and stacking order through mapping.
         // Outputs become views of a part of the Space and can be rendered via Space::render_output.
         let space = Space::default();
+        let presentation_state = PresentationState::new::<Self>(&dh, clock.id() as u32);
 
+        // Manager to track popups and their relations to a surface
+        let popup_manager = PopupManager::default();
+
+        // Creates a wlr layer manager. Thanks to the people at wlroots, Surfaces can be layered,
+        // so the layer manager global will handle the requests made by a client that supports the
+        // protocol
+        let wlr_layer_state = WlrLayerShellState::new::<Self>(&dh);
+
+        // Initializes a wayland listener socket
         let socket_name = Self::init_wayland_listener(display, &handle);
 
         // Return the state
@@ -121,6 +163,12 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
             output_manager_state,
             seat_state,
             data_device_state,
+            presentation_state,
+            popup_manager,
+            wlr_layer_state,
+
+            cursor_image_status,
+            pointer_location: (0.0, 0.0).into(),
             seat,
             clock,
         }
@@ -175,20 +223,51 @@ impl<BackendData: Backend + 'static> Corrosion<BackendData> {
         pointer: &PointerHandle<Self>,
     ) -> Option<(WlSurface, Point<i32, Logical>)> {
         let pos = pointer.current_location();
-        self.space
-            .element_under(pos)
-            .and_then(|(window, location)| {
-                window
-                    .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                    .map(|(s, p)| (s, p + location))
+        let output = self
+            .space
+            .outputs()
+            .find(|output| {
+                let geometry = self.space.output_geometry(output).unwrap();
+                geometry.contains(pos.to_i32_round())
             })
+            .unwrap();
+        let map = desktop::layer_map_for_output(output);
+        let mut under = None;
+
+        if let Some(layer) = map
+            .layer_under(Layer::Overlay, pos)
+            .or_else(|| map.layer_under(Layer::Top, pos))
+        {
+            let layer_geometry = map.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.wl_surface().clone(), layer_geometry))
+        } else if let Some((window, location)) = self
+            .space
+            .element_under(pos)
+            .map(|(focus_target, location)| (focus_target.toplevel().wl_surface(), location))
+        {
+            under = Some((window.clone(), location))
+        } else if let Some(layer) = map
+            .layer_under(Layer::Bottom, pos)
+            .or_else(|| map.layer_under(Layer::Background, pos))
+        {
+            let layer_geometry = map.layer_geometry(layer).unwrap().loc;
+            under = Some((layer.wl_surface().clone(), layer_geometry))
+        }
+        under
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SurfaceDmabufFeedback<'a> {
+    pub render_feedback: &'a DmabufFeedback,
+    pub scanout_feedback: &'a DmabufFeedback,
 }
 
 pub fn post_repaint(
     output: &Output,
     render_states: &RenderElementStates,
     space: &Space<Window>,
+    dmabuf_feedback: Option<SurfaceDmabufFeedback>,
     time: impl Into<Duration>,
 ) {
     let time = time.into();
@@ -208,8 +287,46 @@ pub fn post_repaint(
         });
         if space.outputs_for_element(window).contains(output) {
             window.send_frame(output, time, throttle, surface_primary_scanout_output);
+            if let Some(dmabuf_feedback) = dmabuf_feedback {
+                window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                })
+            }
         }
     });
+
+    let map = desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
+        layer_surface.send_frame(output, time, throttle, surface_primary_scanout_output);
+        if let Some(dmabuf_feedback) = dmabuf_feedback {
+            layer_surface.send_dmabuf_feedback(
+                output,
+                surface_primary_scanout_output,
+                |surface, _| {
+                    select_dmabuf_feedback(
+                        surface,
+                        render_states,
+                        dmabuf_feedback.render_feedback,
+                        dmabuf_feedback.scanout_feedback,
+                    )
+                },
+            );
+        }
+    }
 }
 
 pub fn take_presentation_feedback(
@@ -228,6 +345,14 @@ pub fn take_presentation_feedback(
             )
         }
     });
+    let map = desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut output_presentation_feedback,
+            surface_primary_scanout_output,
+            |surface, _| surface_presentation_feedback_flags_from_states(surface, states),
+        );
+    }
     output_presentation_feedback
 }
 
@@ -249,5 +374,5 @@ pub trait Backend {
     fn loop_signal(&self) -> &LoopSignal;
     fn seat_name(&self) -> String;
     fn early_import(&mut self, output: &WlSurface);
-    fn reset_buffers(&self, surface: &Output);
+    fn reset_buffers(&mut self, surface: &Output);
 }

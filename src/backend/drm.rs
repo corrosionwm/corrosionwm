@@ -1,9 +1,10 @@
-use std::{collections::HashMap, os::fd::FromRawFd, time::Duration};
+use std::{collections::HashMap, os::fd::FromRawFd, sync::Mutex, time::Duration};
 
-use super::UdevData;
+use super::{utils::CustomRenderElements, DrmSurfaceDmabufFeedback, UdevData};
 
 use crate::{
-    state::{post_repaint, take_presentation_feedback},
+    backend::get_surface_dmabuf_feedback,
+    state::{post_repaint, take_presentation_feedback, SurfaceDmabufFeedback},
     CalloopData, Corrosion,
 };
 use smithay::{
@@ -20,7 +21,10 @@ use smithay::{
         egl::{display::EGLDisplay, EGLDevice},
         renderer::{
             damage::{Error as OutputDamageTrackerError, OutputDamageTracker},
-            element::{surface::WaylandSurfaceRenderElement, RenderElement, RenderElementStates},
+            element::{
+                surface::WaylandSurfaceRenderElement, texture::TextureBuffer, AsRenderElements,
+                RenderElement, RenderElementStates,
+            },
             gles::{GlesRenderer, GlesTexture},
             multigpu::{gbm::GbmGlesBackend, MultiRenderer},
             Bind, ExportMem, Offscreen, Renderer,
@@ -28,10 +32,8 @@ use smithay::{
         session::Session,
         SwapBuffersError,
     },
-    desktop::{
-        space::{self, SpaceRenderElements},
-        utils::OutputPresentationFeedback,
-    },
+    desktop::{space, utils::OutputPresentationFeedback},
+    input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as WlMode, Output, PhysicalProperties},
     reexports::{
         calloop::{timer::Timer, RegistrationToken},
@@ -42,9 +44,10 @@ use smithay::{
         },
         nix::fcntl::OFlag,
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
-        wayland_server::{backend::GlobalId, DisplayHandle},
+        wayland_server::{backend::GlobalId, protocol::wl_output::WlOutput, DisplayHandle},
     },
-    utils::DeviceFd,
+    utils::{DeviceFd, IsAlive, Scale, Transform},
+    wayland::compositor,
 };
 use smithay_drm_extras::{
     drm_scanner::{
@@ -68,12 +71,12 @@ type HardwareCompositor = DrmCompositor<
 >;
 
 #[derive(PartialEq)]
-struct UdevOutputId {
-    crtc: CrtcHandle,
-    device_id: DrmNode,
+pub struct UdevOutputId {
+    pub crtc: CrtcHandle,
+    pub device_id: DrmNode,
 }
 
-enum SurfaceComposition {
+pub enum SurfaceComposition {
     Surface {
         surface: RenderingSurface,
         damage_tracker: OutputDamageTracker,
@@ -85,20 +88,29 @@ type UdevRenderer<'a, 'b> =
     MultiRenderer<'a, 'a, 'b, GbmGlesBackend<GlesRenderer>, GbmGlesBackend<GlesRenderer>>;
 
 pub struct SurfaceData {
-    _dh: DisplayHandle,
-    compositor: SurfaceComposition,
-    _id: Option<GlobalId>,
-    render_node: DrmNode,
-    device_node: DrmNode,
+    pub dh: DisplayHandle,
+    pub compositor: SurfaceComposition,
+    pub id: Option<GlobalId>,
+    pub render_node: DrmNode,
+    pub device_node: DrmNode,
+    pub dmabuf_feedback: Option<DrmSurfaceDmabufFeedback>,
 }
 
 pub struct BackendData {
-    token: RegistrationToken,
-    scanner: DrmScanner,
-    render_node: DrmNode,
-    surfaces: HashMap<CrtcHandle, SurfaceData>,
-    gbm: GbmDevice<DrmDeviceFd>,
-    drm: DrmDevice,
+    pub token: RegistrationToken,
+    pub scanner: DrmScanner,
+    pub render_node: DrmNode,
+    pub surfaces: HashMap<CrtcHandle, SurfaceData>,
+    pub gbm: GbmDevice<DrmDeviceFd>,
+    pub drm: DrmDevice,
+}
+
+impl Drop for SurfaceData {
+    fn drop(&mut self) {
+        if let Some(global) = self.id.take() {
+            self.dh.remove_global::<WlOutput>(global);
+        }
+    }
 }
 
 impl SurfaceComposition {
@@ -126,7 +138,7 @@ impl SurfaceComposition {
         }
     }
 
-    pub fn _surface(&self) -> &DrmSurface {
+    pub fn surface(&self) -> &DrmSurface {
         match self {
             SurfaceComposition::Compositor(compositor) => compositor.surface(),
             Self::Surface {
@@ -290,13 +302,13 @@ impl Corrosion<UdevData> {
             return;
         };
 
-        let renderer = self
+        let mut renderer = self
             .backend_data
             .gpu_manager
             .single_renderer(&device.render_node)
             .unwrap();
         let render_formats = renderer
-            .as_ref()
+            .as_mut()
             .egl_context()
             .dmabuf_render_formats()
             .clone();
@@ -440,14 +452,22 @@ impl Corrosion<UdevData> {
             SurfaceComposition::Compositor(compositor)
         };
 
+        let dmabuf_feedback = get_surface_dmabuf_feedback(
+            self.backend_data.primary_gpu,
+            device.render_node,
+            &mut self.backend_data.gpu_manager,
+            &compositor,
+        );
+
         device.surfaces.insert(
             crtc,
             SurfaceData {
-                _dh: self.display_handle.clone(),
+                dh: self.display_handle.clone(),
                 compositor,
-                _id: Some(global),
+                id: Some(global),
                 render_node: device.render_node,
                 device_node: node,
+                dmabuf_feedback,
             },
         );
 
@@ -687,6 +707,11 @@ impl Corrosion<UdevData> {
             return;
         };
 
+        let frame = self
+            .backend_data
+            .cursor_image
+            .get_image(1, self.clock.now().try_into().unwrap());
+
         let render_node = surface.render_node;
         let primary_gpu = self.backend_data.primary_gpu;
         let mut renderer = if primary_gpu == render_node {
@@ -706,6 +731,32 @@ impl Corrosion<UdevData> {
         }
         .unwrap();
 
+        let pointer_images = &mut self.backend_data.cursor_images;
+        let pointer_image = pointer_images
+            .iter()
+            .find_map(|(image, texture)| {
+                if image == &frame {
+                    Some(texture.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| {
+                let texture = TextureBuffer::from_memory(
+                    &mut renderer,
+                    &frame.pixels_rgba,
+                    Fourcc::Abgr8888,
+                    (frame.width as i32, frame.height as i32),
+                    false,
+                    1,
+                    Transform::Normal,
+                    None,
+                )
+                .expect("Failed to import cursor bitmap");
+                pointer_images.push((frame, texture.clone()));
+                texture
+            });
+
         let output = if let Some(output) = self.space.outputs().find(|o| {
             o.user_data().get()
                 == Some(&UdevOutputId {
@@ -718,20 +769,89 @@ impl Corrosion<UdevData> {
             return;
         };
 
-        let elements: Vec<_> =
-            space::space_render_elements(&mut renderer, [&self.space], &output).unwrap();
+        let mut elements: Vec<CustomRenderElements<_, _>> = Vec::new();
 
+        let output_geometry = self.space.output_geometry(&output).unwrap();
+        let scale = Scale::from(output.current_scale().fractional_scale());
+        if output_geometry.to_f64().contains(self.pointer_location) {
+            let cursor_hotspot = if let CursorImageStatus::Surface(ref surface) =
+                *self.cursor_image_status.lock().unwrap()
+            {
+                compositor::with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .hotspot
+                })
+            } else {
+                (0, 0).into()
+            };
+            let cursor_pos =
+                self.pointer_location - output_geometry.loc.to_f64() - cursor_hotspot.to_f64();
+            let cursor_pos_scaled = cursor_pos.to_physical(scale).to_i32_round();
+
+            // set cursor
+            self.backend_data
+                .pointer_element
+                .set_texture(pointer_image.clone());
+
+            // draw the cursor as relevant
+            {
+                // reset the cursor if the surface is no longer alive
+                let mut reset = false;
+                if let CursorImageStatus::Surface(ref surface) =
+                    *self.cursor_image_status.lock().unwrap()
+                {
+                    reset = !surface.alive();
+                }
+                if reset {
+                    *self.cursor_image_status.lock().unwrap() = CursorImageStatus::Default;
+                }
+
+                self.backend_data
+                    .pointer_element
+                    .set_status(self.cursor_image_status.lock().unwrap().clone());
+            }
+
+            elements.extend(self.backend_data.pointer_element.render_elements(
+                &mut renderer,
+                cursor_pos_scaled,
+                scale,
+            ));
+        }
+
+        elements.extend(
+            space::space_render_elements(&mut renderer, [&self.space], &output)
+                .expect("Output without mode")
+                .into_iter()
+                .map(|element| CustomRenderElements::Space(element)),
+        );
         let (rendered, states) = surface
             .compositor
             .render_frame::<_, _, GlesTexture>(
                 &mut renderer,
                 &elements,
-                [1.0f32, 1.0f32, 1.0f32, 1.0f32],
+                [0.2f32, 0.05f32, 0.6f32, 1.0f32],
             )
             .unwrap();
 
+        post_repaint(
+            &output,
+            &states,
+            &self.space,
+            surface
+                .dmabuf_feedback
+                .as_ref()
+                .map(|feedback| SurfaceDmabufFeedback {
+                    render_feedback: &feedback.render_feedback,
+                    scanout_feedback: &feedback.scanout_feedback,
+                }),
+            self.clock.now(),
+        );
         if rendered {
-            post_repaint(&output, &states, &self.space, self.clock.now());
             let output_feedback = take_presentation_feedback(&output, &self.space, &states);
             surface
                 .compositor
@@ -787,10 +907,14 @@ impl Corrosion<UdevData> {
 }
 
 fn initial_render(surface: &mut SurfaceData, renderer: &mut UdevRenderer<'_, '_>) {
-    surface.compositor.render_frame::<_, SpaceRenderElements<
-        UdevRenderer,
-        WaylandSurfaceRenderElement<UdevRenderer>,
-    >, GlesTexture>(renderer, &[], [1.0f32, 1.0f32, 1.0f32, 1.0f32]).expect("Unable to render");
+    surface
+        .compositor
+        .render_frame::<_, CustomRenderElements<_, WaylandSurfaceRenderElement<_>>, GlesTexture>(
+            renderer,
+            &[],
+            [0.2f32, 0.05f32, 0.6f32, 1.0f32],
+        )
+        .expect("Unable to render");
     surface.compositor.queue_frame(None).unwrap();
     surface.compositor.reset_buffers();
 }

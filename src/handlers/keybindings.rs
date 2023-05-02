@@ -1,6 +1,8 @@
+use smithay::backend::session::Session;
 use smithay::input::keyboard::ModifiersState;
 use std::process::Command;
 
+use crate::backend::UdevData;
 use crate::state::{Backend, Corrosion};
 
 // code to convert emacs style keybindings to xkb keysyms
@@ -31,10 +33,11 @@ pub enum KeyAction {
     _CloseWindow,
     Spawn(String),
     _Launcher(String),
+    VTSwitch(i32),
 }
 
-impl<BackendData: Backend> Corrosion<BackendData> {
-    pub fn parse_keybindings(&self, action: KeyAction) {
+impl Corrosion<UdevData> {
+    pub fn parse_keybindings(&mut self, action: KeyAction) {
         match action {
             KeyAction::Spawn(program) => {
                 let mut args: Vec<&str> = program.split(' ').collect();
@@ -79,6 +82,11 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                 execution.args(args);
                 execution.spawn().ok();
                 tracing::info!("Spawned program: {}", program);
+            }
+            KeyAction::VTSwitch(tty_num) => {
+                if let Err(err) = self.backend_data.session.change_vt(tty_num) {
+                    tracing::error!("Error in switching virtual terminal: {}", err);
+                }
             }
         };
     }
