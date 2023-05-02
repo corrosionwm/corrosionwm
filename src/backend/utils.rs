@@ -1,7 +1,5 @@
 use smithay::{
-    backend::renderer::{
-        ImportAll, ImportMem,
-    },
+    backend::renderer::{ImportAll, ImportMem},
     desktop::space::SpaceRenderElements,
     render_elements,
 };

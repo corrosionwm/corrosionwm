@@ -22,7 +22,7 @@ use smithay::{
             surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
             update_surface_primary_scanout_output, OutputPresentationFeedback,
         },
-        PopupManager, Space, Window, 
+        PopupManager, Space, Window,
     },
     input::{
         pointer::{CursorImageStatus, PointerHandle},
