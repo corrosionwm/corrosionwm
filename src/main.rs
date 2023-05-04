@@ -36,6 +36,7 @@ fn find_term(defaults: &Defaults) -> Option<&String> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // initialize logging
     if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_env("CORROSIONWM_LOG") {
         // change this by changing the RUST_LOG environment variable
         tracing::info!("logging initialized with env filter: {}", env_filter);
@@ -48,25 +49,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("logging initialized");
     tracing::info!("Starting corrosionWM");
 
-    // if using nvidia, error out
+    // if using nvidia, warn the user that EGL is not supported
     if let Ok(nvidia) = std::fs::read_to_string("/proc/driver/nvidia/version") {
         if nvidia.contains("NVIDIA") {
             tracing::warn!("CorrosionWM does not currently support EGL, so older proprietary nvidia drivers may not work with this compositor. It is advised to use the Nouveau drivers if you have an older nvidia card.");
         }
     }
 
-    let corrosion_config = CorrosionConfig::new();
-    let defaults = corrosion_config.get_defaults();
+    let corrosion_config = CorrosionConfig::new(); // get the config
+    let defaults = corrosion_config.get_defaults(); // get the defaults from the config
 
+    // the backend to use, can be either udev or winit
     let backend = match env::var("CORROSIONWM_BACKEND") {
         Ok(ret) => ret,
         Err(_) => String::from("udev"),
     };
 
-    let mut args = std::env::args().skip(1);
-    let flag = args.next();
-    let arg = args.next();
+    let mut args = std::env::args().skip(1); // skip the first argument, which is the binary name
+    let flag = args.next(); // get the first argument
+    let arg = args.next(); // get the second argument
 
+    // handle the arguments
+    // TODO: we should also make it process the arguments first so it doesnt log a bunch of stuff
     match (flag.as_deref(), arg) {
         (Some("-h") | Some("--help"), _) => {
             println!("Usage: corrosionwm [OPTION]...");
@@ -86,16 +90,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
+    
+    // initialize the backend
     match backend.as_ref() {
         "winit" => {
+            // initialize the winit backend
             winit_corrosion::init_winit::<WinitData>()
                 .expect("Unable to initialize winit backend :(");
         }
         "udev" => {
+            // initialize the udev backend
             backend::initialize_backend();
         }
         _ => {
+            // default to udev
             tracing::error!("Backend setting not known, defaulting to udev");
             tracing::error!("Backend setting was: {}", backend);
             backend::initialize_backend();
