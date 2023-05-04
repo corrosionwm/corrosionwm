@@ -1,24 +1,25 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
         keyboard::{keysyms, FilterResult},
-        pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
+        pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent, RelativeMotionEvent},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, SERIAL_COUNTER},
 };
 
 use crate::{
+    backend::UdevData,
     grabs::{resize_grab::ResizeEdge, MoveSurfaceGrab, ResizeSurfaceGrab},
     handlers::keybindings::{self, KeyAction},
-    state::{Backend, Corrosion},
+    state::Corrosion,
     CorrosionConfig,
 };
 
-impl<BackendData: Backend> Corrosion<BackendData> {
+impl Corrosion<UdevData> {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
             InputEvent::Keyboard { event, .. } => {
@@ -54,6 +55,13 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                             } else if handle.modified_sym() == keysyms::KEY_x | keysyms::KEY_X {
                                 // TODO: make it so you can close windows
                                 action = KeyAction::_CloseWindow;
+                            } else if (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12)
+                                .contains(&handle.modified_sym())
+                            {
+                                action = KeyAction::VTSwitch(
+                                    (handle.modified_sym() - keysyms::KEY_XF86Switch_VT_1 + 1)
+                                        as i32,
+                                )
                             } else {
                                 return FilterResult::Forward;
                             }
@@ -67,29 +75,66 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                     self.parse_keybindings(action);
                 }
             }
-            InputEvent::PointerMotion { .. } => {}
-            InputEvent::PointerMotionAbsolute { event, .. } => {
-                let output = self.space.outputs().next().unwrap();
-
-                let output_geo = self.space.output_geometry(output).unwrap();
-
-                let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
-
+            InputEvent::PointerMotion { event } => {
                 let serial = SERIAL_COUNTER.next_serial();
 
-                let pointer = self.seat.get_pointer().unwrap();
+                self.pointer_location += event.delta();
+                self.pointer_location = self.clamp_coords(self.pointer_location);
+                let surface_under = self.surface_under_pointer(&self.seat.get_pointer().unwrap());
+                if let Some(pointer) = self.seat.get_pointer() {
+                    pointer.motion(
+                        self,
+                        surface_under.clone(),
+                        &MotionEvent {
+                            location: self.pointer_location,
+                            serial,
+                            time: event.time_msec(),
+                        },
+                    );
+                    pointer.relative_motion(
+                        self,
+                        surface_under.clone(),
+                        &RelativeMotionEvent {
+                            delta: event.delta(),
+                            delta_unaccel: event.delta_unaccel(),
+                            utime: event.time(),
+                        },
+                    )
+                }
+            }
+            InputEvent::PointerMotionAbsolute { event, .. } => {
+                let serial = SERIAL_COUNTER.next_serial();
 
-                let under = self.surface_under_pointer(&pointer);
+                let max_x = self.space.outputs().fold(0, |acc, o| {
+                    acc + self.space.output_geometry(o).unwrap().size.w
+                });
 
-                pointer.motion(
-                    self,
-                    under,
-                    &MotionEvent {
-                        location: pos,
-                        serial,
-                        time: event.time_msec(),
-                    },
-                );
+                let max_h_output = self
+                    .space
+                    .outputs()
+                    .max_by_key(|o| self.space.output_geometry(o).unwrap().size.h)
+                    .unwrap();
+
+                let max_y = self.space.output_geometry(max_h_output).unwrap().size.h;
+
+                self.pointer_location.x = event.x_transformed(max_x);
+                self.pointer_location.y = event.y_transformed(max_y);
+
+                // clamp to screen limits
+                self.pointer_location = self.clamp_coords(self.pointer_location);
+
+                let under = self.surface_under_pointer(&self.seat.get_pointer().unwrap());
+                if let Some(ptr) = self.seat.get_pointer() {
+                    ptr.motion(
+                        self,
+                        under,
+                        &MotionEvent {
+                            location: self.pointer_location,
+                            serial,
+                            time: event.time_msec(),
+                        },
+                    );
+                }
             }
             InputEvent::PointerButton { event, .. } => {
                 let pointer = self.seat.get_pointer().unwrap();
@@ -154,6 +199,8 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                                 _ => (),
                             }
                         };
+                    } else if let Some((window, _loc)) = self.surface_under_pointer(&pointer) {
+                        keyboard.set_focus(self, Some(window), serial);
                     } else {
                         self.space.elements().for_each(|window| {
                             window.set_activated(false);
@@ -206,6 +253,32 @@ impl<BackendData: Backend> Corrosion<BackendData> {
                 self.seat.get_pointer().unwrap().axis(self, frame);
             }
             _ => {}
+        }
+    }
+    fn clamp_coords(&self, pos: Point<f64, Logical>) -> Point<f64, Logical> {
+        if self.space.outputs().next().is_none() {
+            return pos;
+        }
+
+        let (pos_x, pos_y) = pos.into();
+        let max_x = self.space.outputs().fold(0, |acc, o| {
+            acc + self.space.output_geometry(o).unwrap().size.w
+        });
+        let clamped_x = pos_x.max(0.0).min(max_x as f64);
+        let max_y = self
+            .space
+            .outputs()
+            .find(|o| {
+                let geo = self.space.output_geometry(o).unwrap();
+                geo.contains((clamped_x as i32, 0))
+            })
+            .map(|o| self.space.output_geometry(o).unwrap().size.h);
+
+        if let Some(max_y) = max_y {
+            let clamped_y = pos_y.max(0.0).min(max_y as f64);
+            (clamped_x, clamped_y).into()
+        } else {
+            (clamped_x, pos_y).into()
         }
     }
 }

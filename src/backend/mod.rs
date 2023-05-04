@@ -1,43 +1,80 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+#[cfg(feature = "egl")]
+use smithay::backend::renderer::ImportEgl;
 use smithay::{
     backend::{
         allocator::{
-            dmabuf::{AnyError, Dmabuf},
+            dmabuf::{AnyError, Dmabuf, DmabufAllocator},
+            gbm::{GbmAllocator, GbmBufferFlags},
+            vulkan::{ImageUsageFlags, VulkanAllocator},
             Allocator,
         },
         drm::{DrmNode, NodeType},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
+            element::texture::TextureBuffer,
             gles::GlesRenderer,
-            multigpu::{gbm::GbmGlesBackend, GpuManager},
-
-            ImportMemWl,
+            multigpu::{gbm::GbmGlesBackend, GpuManager, MultiTexture},
+            ImportDma, ImportMemWl,
         },
         session::libseat::LibSeatSession,
         session::Session,
         udev::{self, UdevBackend},
+        vulkan::{version::Version, Instance, PhysicalDevice},
     },
+    delegate_dmabuf,
     reexports::{
+        ash::vk::ExtPhysicalDeviceDrmFn,
         calloop::{EventLoop, LoopSignal},
         input::Libinput,
+        wayland_protocols::wp::linux_dmabuf::zv1::server::zwp_linux_dmabuf_feedback_v1,
         wayland_server::{protocol::wl_surface::WlSurface, Display},
+    },
+    wayland::dmabuf::{
+        DmabufFeedback, DmabufFeedbackBuilder, DmabufGlobal, DmabufHandler, DmabufState,
+        ImportError,
     },
 };
 
-use self::drm::BackendData;
-use crate::{state::Backend, CalloopData, Corrosion};
+use self::drm::{BackendData, SurfaceComposition, UdevOutputId};
+use crate::{cursor::Cursor, drawing::PointerElement, state::Backend, CalloopData, Corrosion};
 
 mod drm;
+mod utils;
 
-struct UdevData {
+pub struct UdevData {
     pub loop_signal: LoopSignal,
     pub session: LibSeatSession,
     primary_gpu: DrmNode,
+    dmabuf_state: Option<(DmabufState, DmabufGlobal)>,
     allocator: Option<Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>>,
     gpu_manager: GpuManager<GbmGlesBackend<GlesRenderer>>,
     backends: HashMap<DrmNode, BackendData>,
+    pointer_element: PointerElement<MultiTexture>,
+    cursor_image: Cursor,
+    cursor_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
 }
+
+impl DmabufHandler for Corrosion<UdevData> {
+    fn dmabuf_state(&mut self) -> &mut smithay::wayland::dmabuf::DmabufState {
+        &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+    ) -> Result<(), smithay::wayland::dmabuf::ImportError> {
+        self.backend_data
+            .gpu_manager
+            .single_renderer(&self.backend_data.primary_gpu)
+            .and_then(|mut renderer| renderer.import_dmabuf(&dmabuf, None))
+            .map(|_| ())
+            .map_err(|_| ImportError::Failed)
+    }
+}
+delegate_dmabuf!(Corrosion<UdevData>);
 
 impl Backend for UdevData {
     fn early_import(&mut self, output: &WlSurface) {
@@ -54,8 +91,14 @@ impl Backend for UdevData {
         &self.loop_signal
     }
 
-    fn reset_buffers(&self, _surface: &smithay::output::Output) {
-        todo!();
+    fn reset_buffers(&mut self, output: &smithay::output::Output) {
+        if let Some(id) = output.user_data().get::<UdevOutputId>() {
+            if let Some(gpu) = self.backends.get_mut(&id.device_id) {
+                if let Some(surface) = gpu.surfaces.get_mut(&id.crtc) {
+                    surface.compositor.reset_buffers();
+                }
+            }
+        }
     }
 
     fn seat_name(&self) -> String {
@@ -98,11 +141,15 @@ pub fn initialize_backend() {
 
     let data = UdevData {
         loop_signal: event_loop.get_signal(),
+        dmabuf_state: None,
         session,
         primary_gpu,
         allocator: None,
         gpu_manager: gpus,
         backends: HashMap::new(),
+        cursor_image: Cursor::load(),
+        cursor_images: Vec::new(),
+        pointer_element: PointerElement::default(),
     };
     let mut state = Corrosion::new(event_loop.handle(), &mut display, data);
 
@@ -127,11 +174,39 @@ pub fn initialize_backend() {
             .shm_formats(),
     );
 
+    if let Ok(instance) = Instance::new(Version::VERSION_1_2, None) {
+        if let Some(physical_device) =
+            PhysicalDevice::enumerate(&instance)
+                .ok()
+                .and_then(|devices| {
+                    devices
+                        .filter(|phd| phd.has_device_extension(ExtPhysicalDeviceDrmFn::name()))
+                        .find(|phd| {
+                            phd.primary_node().unwrap() == Some(primary_gpu)
+                                || phd.render_node().unwrap() == Some(primary_gpu)
+                        })
+                })
+        {
+            match VulkanAllocator::new(
+                &physical_device,
+                ImageUsageFlags::COLOR_ATTACHMENT | ImageUsageFlags::SAMPLED,
+            ) {
+                Ok(allocator) => {
+                    state.backend_data.allocator = Some(Box::new(DmabufAllocator(allocator))
+                        as Box<dyn Allocator<Buffer = Dmabuf, Error = AnyError>>);
+                }
+                Err(err) => {
+                    tracing::warn!("Failed to create vulkan allocator: {}", err);
+                }
+            }
+        }
+    }
+
     let mut libinput_context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(
         state.backend_data.session.clone().into(),
     );
     libinput_context.udev_assign_seat(&state.seat_name).unwrap();
-    let libinput_backend = LibinputInputBackend::new(libinput_context);
+    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
 
     state
         .handle
@@ -140,6 +215,63 @@ pub fn initialize_backend() {
         })
         .unwrap();
 
+    let gbm = state
+        .backend_data
+        .backends
+        .get(&primary_gpu)
+        // If the primary_gpu failed to initialize, we likely have a kmsro device
+        .or_else(|| state.backend_data.backends.values().next())
+        // Don't fail, if there is no allocator. There is a chance, that this a single gpu system and we don't need one.
+        .map(|backend| backend.gbm.clone());
+    state.backend_data.allocator = gbm.map(|gbm| {
+        Box::new(DmabufAllocator(GbmAllocator::new(
+            gbm,
+            GbmBufferFlags::RENDERING,
+        ))) as Box<_>
+    });
+    #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
+    let mut renderer = state
+        .backend_data
+        .gpu_manager
+        .single_renderer(&primary_gpu)
+        .unwrap();
+
+    #[cfg(feature = "egl")]
+    {
+        match renderer.bind_wl_display(&state.display_handle) {
+            Ok(_) => tracing::info!("Enabled egl hardware acceleration"),
+            Err(err) => tracing::error!("Error in enabling egl hardware acceleration: {:?}", err),
+        }
+    }
+
+    let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
+    let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)
+        .build()
+        .unwrap();
+    let mut dmabuf_state = DmabufState::new();
+    let dmabuf_global = dmabuf_state.create_global_with_default_feedback::<Corrosion<UdevData>>(
+        &display.handle(),
+        &default_feedback,
+    );
+    state.backend_data.dmabuf_state = Some((dmabuf_state, dmabuf_global));
+
+    let gpus = &mut state.backend_data.gpu_manager;
+    state
+        .backend_data
+        .backends
+        .values_mut()
+        .for_each(|backend_data| {
+            backend_data.surfaces.values_mut().for_each(|surface_data| {
+                surface_data.dmabuf_feedback = surface_data.dmabuf_feedback.take().or_else(|| {
+                    get_surface_dmabuf_feedback(
+                        primary_gpu,
+                        surface_data.render_node,
+                        gpus,
+                        &surface_data.compositor,
+                    )
+                });
+            });
+        });
     event_loop
         .handle()
         .insert_source(backend, move |event, _, data| match event {
@@ -167,8 +299,80 @@ pub fn initialize_backend() {
             &mut calloop_data,
             |data| {
                 data.state.space.refresh();
+                data.state.popup_manager.cleanup();
                 data.display.flush_clients().unwrap();
             },
         )
         .unwrap();
+}
+
+pub struct DrmSurfaceDmabufFeedback {
+    render_feedback: DmabufFeedback,
+    scanout_feedback: DmabufFeedback,
+}
+
+fn get_surface_dmabuf_feedback(
+    primary_node: DrmNode,
+    render_node: DrmNode,
+    gpus: &mut GpuManager<GbmGlesBackend<GlesRenderer>>,
+    composition: &SurfaceComposition,
+) -> Option<DrmSurfaceDmabufFeedback> {
+    let primary_formats = gpus
+        .single_renderer(&primary_node)
+        .ok()?
+        .dmabuf_formats()
+        .collect::<HashSet<_>>();
+
+    let render_formats = gpus
+        .single_renderer(&render_node)
+        .ok()?
+        .dmabuf_formats()
+        .collect::<HashSet<_>>();
+
+    let all_render_formats = primary_formats
+        .iter()
+        .chain(render_formats.iter())
+        .copied()
+        .collect::<HashSet<_>>();
+
+    let surface = composition.surface();
+    let planes = surface.planes().unwrap();
+
+    let planes_formats = surface
+        .supported_formats(planes.primary.handle)
+        .unwrap()
+        .into_iter()
+        .chain(
+            planes
+                .overlay
+                .iter()
+                .flat_map(|p| surface.supported_formats(p.handle).unwrap()),
+        )
+        .collect::<HashSet<_>>()
+        .intersection(&all_render_formats)
+        .copied()
+        .collect::<Vec<_>>();
+
+    let builder = DmabufFeedbackBuilder::new(primary_node.dev_id(), primary_formats);
+    let render_feedback = builder
+        .clone()
+        .add_preference_tranche(render_node.dev_id(), None, render_formats.clone())
+        .build()
+        .unwrap();
+
+    let scanout_feedback = builder
+        .clone()
+        .add_preference_tranche(
+            surface.device_fd().dev_id().unwrap(),
+            Some(zwp_linux_dmabuf_feedback_v1::TrancheFlags::Scanout),
+            planes_formats,
+        )
+        .add_preference_tranche(render_node.dev_id(), None, render_formats)
+        .build()
+        .unwrap();
+
+    Some(DrmSurfaceDmabufFeedback {
+        render_feedback,
+        scanout_feedback,
+    })
 }

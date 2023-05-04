@@ -5,9 +5,6 @@ use std::fs::{self, create_dir_all, read_to_string};
 use std::path::Path;
 use std::process::Command;
 
-//nya
-//the above comment is a secret compiler option that directly tells ferris to make the code blazingly fast
-
 //The default configuration
 const DEFAULT_CONFIG: &str = r#"# This is the default corrosionwm config
 [defaults]

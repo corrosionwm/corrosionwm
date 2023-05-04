@@ -1,6 +1,6 @@
 use smithay::{
-    delegate_xdg_decoration, delegate_xdg_shell,
-    desktop::{Space, Window},
+    delegate_presentation, delegate_xdg_decoration, delegate_xdg_shell,
+    desktop::{PopupKind, Space, Window},
     input::{
         pointer::{Focus, GrabStartData as PointerGrabStartData},
         Seat,
@@ -47,8 +47,10 @@ impl<BackendData: Backend> XdgShellHandler for Corrosion<BackendData> {
         self.space.map_element(window, (0, 0), false);
     }
 
-    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
-        // TODO: Popup handling using PopupManager
+    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+        if let Err(err) = self.popup_manager.track_popup(PopupKind::from(surface)) {
+            tracing::error!("Failed to track popup: {}", err);
+        }
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
@@ -143,6 +145,8 @@ impl<BackendData: Backend> XdgDecorationHandler for Corrosion<BackendData> {
 delegate_xdg_shell!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
 // Xdg Decoration
 delegate_xdg_decoration!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
+// Presentation
+delegate_presentation!(@<BackendData: Backend + 'static> Corrosion<BackendData>);
 
 fn check_grab<BackendData: Backend + 'static>(
     seat: &Seat<Corrosion<BackendData>>,

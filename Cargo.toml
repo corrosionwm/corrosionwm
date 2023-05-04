@@ -27,3 +27,8 @@ which = "4.4.0"
 toml = "0.7.2"
 serde = "1.0.155"
 serde_derive = "1.0.155"
+thiserror = "1.0.40"
+
+[features]
+default = ["egl"]
+egl = ["smithay/use_system_lib", "smithay/backend_egl"]
