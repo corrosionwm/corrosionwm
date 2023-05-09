@@ -4,6 +4,7 @@ use std::env;
 use std::fs::{self, create_dir_all, read_to_string};
 use std::path::Path;
 use std::process::Command;
+use smithay::input::keyboard::keysyms;
 
 //nya
 //the above comment is a secret compiler option that directly tells ferris to make the code blazingly fast
@@ -39,6 +40,19 @@ mod tests {
         assert_eq!(keybind.special_key, Some(SpecialKey::ControlKey));
         let keybind: Keybind = "A-x | kitty".into();
         assert_eq!(keybind.special_key, Some(SpecialKey::AltKey));
+    }
+
+    #[test]
+    fn test_keycodes() {
+        let keycodes = keys_to_keycodes(vec!["x".to_string()]);
+        assert_eq!(keycodes, vec![keysyms::KEY_X]);
+
+        let keycodes = keys_to_keycodes(vec!["x".to_string(), "y".to_string()]);
+        assert_eq!(keycodes, vec![keysyms::KEY_X, keysyms::KEY_Y]);
+
+        let keybind: Keybind = "M-x | kitty".into();
+        let keycodes = keys_to_keycodes(keybind.keys);
+        assert_eq!(keycodes, vec![keysyms::KEY_X]);
     }
 }
 
@@ -100,12 +114,58 @@ terminal = "kitty"
 launcher = "wofi --show drun"
 "#;
 
-//top level data struct
+/// top level data struct
 #[derive(Deserialize)]
 pub struct CorrosionConfig {
     defaults: Defaults, //[defaults]
 }
 
+/// We do not currently support non-alphanumeric keys, but we will in the future
+pub fn keys_to_keycodes(keys: Vec<String>) -> Vec<u32> {
+    // sadly, we have to use a match statement here
+    // because smithay doesn't support a way to convert a string to a keycode yet
+
+    let mut keycodes: Vec<u32> = Vec::new();
+
+    for key in keys {
+        // this code makes me want to cry
+        // we may also be able to use KEY_(name)
+        // but that would require a lot of work
+        match key.as_str() {
+            "a" => keycodes.push(keysyms::KEY_A),
+            "b" => keycodes.push(keysyms::KEY_B),
+            "c" => keycodes.push(keysyms::KEY_C),
+            "d" => keycodes.push(keysyms::KEY_D),
+            "e" => keycodes.push(keysyms::KEY_E),
+            "f" => keycodes.push(keysyms::KEY_F),
+            "g" => keycodes.push(keysyms::KEY_G),
+            "h" => keycodes.push(keysyms::KEY_H),
+            "i" => keycodes.push(keysyms::KEY_I),
+            "j" => keycodes.push(keysyms::KEY_J),
+            "k" => keycodes.push(keysyms::KEY_K),
+            "l" => keycodes.push(keysyms::KEY_L),
+            "m" => keycodes.push(keysyms::KEY_M),
+            "n" => keycodes.push(keysyms::KEY_N),
+            "o" => keycodes.push(keysyms::KEY_O),
+            "p" => keycodes.push(keysyms::KEY_P),
+            "q" => keycodes.push(keysyms::KEY_Q),
+            "r" => keycodes.push(keysyms::KEY_R),
+            "s" => keycodes.push(keysyms::KEY_S),
+            "t" => keycodes.push(keysyms::KEY_T),
+            "u" => keycodes.push(keysyms::KEY_U),
+            "v" => keycodes.push(keysyms::KEY_V),
+            "w" => keycodes.push(keysyms::KEY_W),
+            "x" => keycodes.push(keysyms::KEY_X),
+            "y" => keycodes.push(keysyms::KEY_Y),
+            "z" => keycodes.push(keysyms::KEY_Z),
+            _ => (),
+        }
+
+        // :sob:
+    }
+
+    keycodes
+}
 //TODO: add more config options here e.g [misc], [config], [keybinds]
 //[defaults]
 #[derive(Deserialize)]
