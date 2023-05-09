@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // if using nvidia, warn the user that EGL is not supported
     if let Ok(nvidia) = std::fs::read_to_string("/proc/driver/nvidia/version") {
         if nvidia.contains("NVIDIA") {
-            tracing::warn!("CorrosionWM does not currently support EGL, so older proprietary nvidia drivers may not work with this compositor. It is advised to use the Nouveau drivers if you have an older nvidia card.");
+            tracing::warn!("corrosionWM does not currently support EGL, so older proprietary nvidia drivers may not work with this compositor. It is advised to use the Nouveau drivers if you have an older nvidia card.");
         }
     }
 

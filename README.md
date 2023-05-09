@@ -11,7 +11,7 @@
 
 ## About
 
-CorrosionWM is a blazing fast [Wayland compositor](https://wayland.freedesktop.org/) written in [Rust](https://www.rust-lang.org/).
+corrosionWM is a blazing fast [Wayland compositor](https://wayland.freedesktop.org/) written in [Rust](https://www.rust-lang.org/).
 
 Join our [Discord](https://discord.gg/6sRvfeaNbQ)!
 
