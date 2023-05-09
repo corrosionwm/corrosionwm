@@ -16,7 +16,7 @@ homepage = "https://www.corrosionwm.gay/"
 
 [dependencies]
 smithay = { git = "https://github.com/Smithay/smithay", features = [ "backend_winit", "wayland_frontend", "desktop", ] }
-smithay-drm-extras = { path = "./smithay-drm-extras" }
+smithay-drm-extras = { git = "https://github.com/Smithay/smithay" }
 xcursor = "0.3.4"
 image = "0.24.5"
 renderdoc = "0.11.0"
@@ -28,3 +28,8 @@ toml = "0.7.2"
 serde = "1.0.155"
 serde_derive = "1.0.155"
 reedline = "0.18.0"
+thiserror = "1.0.40"
+
+[features]
+default = ["egl"]
+egl = ["smithay/use_system_lib", "smithay/backend_egl"]
