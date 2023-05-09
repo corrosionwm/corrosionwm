@@ -4,7 +4,6 @@ use std::env;
 use std::fs::{self, create_dir_all, read_to_string};
 use std::path::Path;
 use std::process::Command;
-use smithay::input::keyboard::keysyms;
 
 //nya
 //the above comment is a secret compiler option that directly tells ferris to make the code blazingly fast
@@ -44,6 +43,8 @@ mod tests {
 
     #[test]
     fn test_keycodes() {
+        use smithay::input::keyboard::keysyms;
+
         let keycodes = keys_to_keycodes(vec!["x".to_string()]);
         assert_eq!(keycodes, vec![keysyms::KEY_X]);
 
@@ -122,46 +123,21 @@ pub struct CorrosionConfig {
 
 /// We do not currently support non-alphanumeric keys, but we will in the future
 pub fn keys_to_keycodes(keys: Vec<String>) -> Vec<u32> {
-    // sadly, we have to use a match statement here
-    // because smithay doesn't support a way to convert a string to a keycode yet
+    // Instead of matching over every key str, trim the key str to remove excess characters set by the user, convert the chars in the str to capital chars using the to_ascii_uppercase() method of str, then get the bytes of the characters in key string, iterate through the bytes to add all of them up(there will be more than one byte in non ascii characters like "ñ", which is why iteration is needed)
+    // After that, push the added byte value to the keycodes vec
 
     let mut keycodes: Vec<u32> = Vec::new();
 
     for key in keys {
-        // this code makes me want to cry
-        // we may also be able to use KEY_(name)
-        // but that would require a lot of work
-        match key.as_str() {
-            "a" => keycodes.push(keysyms::KEY_A),
-            "b" => keycodes.push(keysyms::KEY_B),
-            "c" => keycodes.push(keysyms::KEY_C),
-            "d" => keycodes.push(keysyms::KEY_D),
-            "e" => keycodes.push(keysyms::KEY_E),
-            "f" => keycodes.push(keysyms::KEY_F),
-            "g" => keycodes.push(keysyms::KEY_G),
-            "h" => keycodes.push(keysyms::KEY_H),
-            "i" => keycodes.push(keysyms::KEY_I),
-            "j" => keycodes.push(keysyms::KEY_J),
-            "k" => keycodes.push(keysyms::KEY_K),
-            "l" => keycodes.push(keysyms::KEY_L),
-            "m" => keycodes.push(keysyms::KEY_M),
-            "n" => keycodes.push(keysyms::KEY_N),
-            "o" => keycodes.push(keysyms::KEY_O),
-            "p" => keycodes.push(keysyms::KEY_P),
-            "q" => keycodes.push(keysyms::KEY_Q),
-            "r" => keycodes.push(keysyms::KEY_R),
-            "s" => keycodes.push(keysyms::KEY_S),
-            "t" => keycodes.push(keysyms::KEY_T),
-            "u" => keycodes.push(keysyms::KEY_U),
-            "v" => keycodes.push(keysyms::KEY_V),
-            "w" => keycodes.push(keysyms::KEY_W),
-            "x" => keycodes.push(keysyms::KEY_X),
-            "y" => keycodes.push(keysyms::KEY_Y),
-            "z" => keycodes.push(keysyms::KEY_Z),
-            _ => (),
+        let mut key = key.trim().to_ascii_uppercase();
+        let mut key_bytes = key.as_bytes().to_vec();
+        let mut key_value: u32 = 0;
+
+        for byte in key_bytes {
+            key_value += byte as u32;
         }
 
-        // :sob:
+        keycodes.push(key_value);
     }
 
     keycodes
