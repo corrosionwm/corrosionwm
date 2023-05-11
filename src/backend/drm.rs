@@ -432,7 +432,7 @@ impl Corrosion<UdevData> {
                 planes.overlay = vec![];
             }
 
-            let compositor = match DrmCompositor::new(
+            let mut compositor = match DrmCompositor::new(
                 &output,
                 surface,
                 Some(planes),
