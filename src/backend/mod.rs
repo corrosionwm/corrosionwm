@@ -1,5 +1,7 @@
+// Import the necessary modules
 use std::collections::{HashMap, HashSet};
 
+// If using EGL, import the EGL renderer
 #[cfg(feature = "egl")]
 use smithay::backend::renderer::ImportEgl;
 use smithay::{
@@ -40,9 +42,13 @@ use smithay::{
 use self::drm::{BackendData, SurfaceComposition, UdevOutputId};
 use crate::{cursor::Cursor, drawing::PointerElement, state::Backend, CalloopData, Corrosion};
 
+// Define modules
 mod drm;
 mod utils;
 
+/// Struct that holds all the data needed for the Udev backend
+/// This struct is passed to the `Corrosion` struct
+/// The `Corrosion` struct is then passed to the `CalloopData` struct
 pub struct UdevData {
     pub loop_signal: LoopSignal,
     pub session: LibSeatSession,
@@ -56,6 +62,7 @@ pub struct UdevData {
     cursor_images: Vec<(xcursor::parser::Image, TextureBuffer<MultiTexture>)>,
 }
 
+/// Implement `DmabufHandler` for `UdevData`
 impl DmabufHandler for Corrosion<UdevData> {
     fn dmabuf_state(&mut self) -> &mut smithay::wayland::dmabuf::DmabufState {
         &mut self.backend_data.dmabuf_state.as_mut().unwrap().0
@@ -76,6 +83,7 @@ impl DmabufHandler for Corrosion<UdevData> {
 }
 delegate_dmabuf!(Corrosion<UdevData>);
 
+// Implement `Backend` for `UdevData`
 impl Backend for UdevData {
     fn early_import(&mut self, output: &WlSurface) {
         match self
@@ -106,8 +114,11 @@ impl Backend for UdevData {
     }
 }
 
+// Function to initialize the backend
 pub fn initialize_backend() {
+    // Initialize the event loop
     let mut event_loop = EventLoop::try_new().expect("Unable to initialize event loop");
+    // Create a new libseat session
     let (session, mut _notifier) = match LibSeatSession::new() {
         Ok((session, notifier)) => (session, notifier),
         Err(err) => {
@@ -115,8 +126,11 @@ pub fn initialize_backend() {
             return;
         }
     };
+
+    // Create a new wayland display
     let mut display = Display::new().expect("Unable to create wayland display");
 
+    // Get the primary gpu
     let primary_gpu = udev::primary_gpu(&session.seat())
         .unwrap()
         .and_then(|p| {
@@ -132,13 +146,14 @@ pub fn initialize_backend() {
                 .unwrap()
                 .into_iter()
                 .find_map(|g| DrmNode::from_path(g).ok())
-                .expect("no gpu")
+                .expect("no gpus found, how did you even get here?")
         });
-
     tracing::info!("Using {} as a primary gpu", primary_gpu);
 
+    // Create a new gpu manager
     let gpus = GpuManager::new(GbmGlesBackend::default()).unwrap();
-
+    
+    // Create a new udev data struct
     let data = UdevData {
         loop_signal: event_loop.get_signal(),
         dmabuf_state: None,
@@ -151,8 +166,11 @@ pub fn initialize_backend() {
         cursor_images: Vec::new(),
         pointer_element: PointerElement::default(),
     };
+
+    // Create a new corrosion struct
     let mut state = Corrosion::new(event_loop.handle(), &mut display, data);
 
+    // Create a new udev backend
     let backend = match UdevBackend::new(&state.seat_name) {
         Ok(backend) => backend,
         Err(err) => {
@@ -161,10 +179,12 @@ pub fn initialize_backend() {
         }
     };
 
+    // Add the backend to the corrosion state
     for (dev, path) in backend.device_list() {
         state.device_added(DrmNode::from_dev_id(dev).unwrap(), &path);
     }
 
+    // Add the event source to the event loop
     state.shm_state.update_formats(
         state
             .backend_data
@@ -174,6 +194,7 @@ pub fn initialize_backend() {
             .shm_formats(),
     );
 
+    // Make a Vulkan allocator
     if let Ok(instance) = Instance::new(Version::VERSION_1_2, None) {
         if let Some(physical_device) =
             PhysicalDevice::enumerate(&instance)
@@ -202,19 +223,22 @@ pub fn initialize_backend() {
         }
     }
 
+    // Create a new libinput context
     let mut libinput_context = Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(
         state.backend_data.session.clone().into(),
     );
     libinput_context.udev_assign_seat(&state.seat_name).unwrap();
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
 
+    // Add the libinput event source to the event loop
     state
         .handle
         .insert_source(libinput_backend, move |event, _, data| {
             data.state.process_input_event(event);
         })
         .unwrap();
-
+    
+    // Create a new udev event source
     let gbm = state
         .backend_data
         .backends
@@ -230,6 +254,7 @@ pub fn initialize_backend() {
         ))) as Box<_>
     });
     #[cfg_attr(not(feature = "egl"), allow(unused_mut))]
+    // If not using egl, we need to create a renderer for the primary gpu
     let mut renderer = state
         .backend_data
         .gpu_manager
@@ -238,12 +263,14 @@ pub fn initialize_backend() {
 
     #[cfg(feature = "egl")]
     {
+        // Enable egl hardware acceleration
         match renderer.bind_wl_display(&state.display_handle) {
             Ok(_) => tracing::info!("Enabled egl hardware acceleration"),
             Err(err) => tracing::error!("Error in enabling egl hardware acceleration: {:?}", err),
         }
     }
 
+    // Setup dmabuf
     let dmabuf_formats = renderer.dmabuf_formats().collect::<Vec<_>>();
     let default_feedback = DmabufFeedbackBuilder::new(primary_gpu.dev_id(), dmabuf_formats)
         .build()
@@ -255,7 +282,10 @@ pub fn initialize_backend() {
     );
     state.backend_data.dmabuf_state = Some((dmabuf_state, dmabuf_global));
 
+    // Get GPUs
     let gpus = &mut state.backend_data.gpu_manager;
+
+    // Create a new udev event source
     state
         .backend_data
         .backends
@@ -272,6 +302,8 @@ pub fn initialize_backend() {
                 });
             });
         });
+
+    // Start the event loop
     event_loop
         .handle()
         .insert_source(backend, move |event, _, data| match event {
