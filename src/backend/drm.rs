@@ -108,7 +108,7 @@ pub struct BackendData {
 impl Drop for SurfaceData {
     fn drop(&mut self) {
         if let Some(global) = self.id.take() {
-            self.dh.remove_global::<WlOutput>(global);
+            self.dh.remove_global::<Corrosion<UdevData>>(global);
         }
     }
 }
@@ -235,7 +235,7 @@ impl Corrosion<UdevData> {
             .session
             .open(
                 path,
-                OFlag::O_RDWR | OFlag::O_NOCTTY | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
+                OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_NOCTTY | OFlag::O_NONBLOCK,
             )
             .expect("Unable to open device file");
 
@@ -243,7 +243,7 @@ impl Corrosion<UdevData> {
         let fd = DrmDeviceFd::new(unsafe { DeviceFd::from_raw_fd(fd) });
         let (drm, notifier) =
             DrmDevice::new(fd.clone(), true).expect("Could not create drm device");
-        let gbm = GbmDevice::new(fd.clone()).expect("Could not create gbm device");
+        let gbm = GbmDevice::new(fd).expect("Could not create gbm device");
 
         // Insert the device's event source into the event loop
         let registration_token = self
