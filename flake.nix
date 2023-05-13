@@ -1,5 +1,5 @@
 {
-  description = "Corrosionwm's flake, sets up a development on nix. Flake will eventually include modules and a package";
+  description = "corrosionWM's flake, sets up a development on nix. Flake will eventually include modules and a package";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

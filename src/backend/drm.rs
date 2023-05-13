@@ -432,7 +432,7 @@ impl Corrosion<UdevData> {
                 planes.overlay = vec![];
             }
 
-            let compositor = match DrmCompositor::new(
+            let mut compositor = match DrmCompositor::new(
                 &output,
                 surface,
                 Some(planes),
@@ -522,7 +522,7 @@ impl Corrosion<UdevData> {
         tracing::info!("Removed surfaces");
 
         if let Some(backend_data) = self.backend_data.backends.remove(&node) {
-            self.backend_data.gpu_manager.as_mut().remove_node(&node);
+            self.backend_data.gpu_manager.as_mut().remove_node(&backend_data.render_node);
 
             self.handle.remove(backend_data.token);
 

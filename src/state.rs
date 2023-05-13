@@ -6,12 +6,6 @@ use std::{
     time::Duration,
 };
 
-// nitelite's plug
-// watch nitelite's streams they are great :3
-// and she is a very cool firefly
-// https://twitch.tv/nitelitevt
-// shameless plug :trollface:
-
 use smithay::{
     backend::renderer::element::{
         default_primary_scanout_output_compare, utils::select_dmabuf_feedback, RenderElementStates,
