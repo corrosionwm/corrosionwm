@@ -1,5 +1,7 @@
 <p align="center">
  <h1 align="center">corrosionWM</h1>
+ <h2 align="center">THIS PROJECT IS NOW ABANDONED</h2>
+ <h3 align="center">further information will be provided soon</h3>
  <h3 align="center">an aesthetic-oriented and speedy wayland compositor</h3>
 </p>
   <p align="center">
