@@ -29,8 +29,8 @@ jobs:
         sudo apt update && sudo apt install libudev-dev libdbus-1-dev pkg-config libsystemd-dev libwayland-dev libseat-dev xcb libinput-dev libxkbcommon-dev libglvnd-dev
     - name: Build
       run: cargo build --verbose --release
-    - name: Lint
-      run: cargo clippy --verbose
+    - name: Test
+      run: cargo test --verbose --release
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v3.1.2
       with:
